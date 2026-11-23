@@ -1,0 +1,79 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Lua 5.1
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y lua5.1
+
+      - name: Check TOC version matches tag
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          toc_version=$(sed -n 's/^## Version:[[:space:]]*//p' HealTide.toc | tr -d '\r')
+          echo "Tag: $version / TOC: $toc_version"
+          if [ "$toc_version" != "$version" ]; then
+            echo "TOC version ($toc_version) does not match tag ($version)"
+            exit 1
+          fi
+
+      - name: Lua syntax and tests
+        run: |
+          luac5.1 -p HealTide.lua
+          lua5.1 tests/test_healtide.lua
+
+      - name: Build release zip
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          mkdir -p dist/HealTide
+          cp HealTide.toc HealTide.lua README_FR.md dist/HealTide/
+          (cd dist && zip -r "HealTide-${version}.zip" HealTide)
+          unzip -l "dist/HealTide-${version}.zip"
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          gh release create "$GITHUB_REF_NAME" \
+            "dist/HealTide-${version}.zip" \
+            --title "HealTide ${version}" \
+            --notes-file CHANGELOG.md
+
+      - name: Upload to CurseForge
+        if: ${{ vars.CF_PUBLISH == 'true' }}
+        env:
+          CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+          CF_PROJECT_ID: ${{ vars.CF_PROJECT_ID }}
+          CF_GAME_VERSION: ${{ vars.CF_GAME_VERSION }}
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          zip="dist/HealTide-${version}.zip"
+          game_version="${CF_GAME_VERSION:-1.60.1}"
+          : "${CF_API_TOKEN:?Set the CF_API_TOKEN repository secret}"
+          : "${CF_PROJECT_ID:?Set the CF_PROJECT_ID repository variable}"
+          metadata=$(jq -n \
+            --arg changelog "$(cat CHANGELOG.md)" \
+            --arg displayName "$version" \
+            --arg gameVersion "$game_version" \
+            '{changelog:$changelog,changelogType:"markdown",displayName:$displayName,releaseType:"release",gameVersionNames:[$gameVersion]}')
+          echo "Uploading $zip to CurseForge project $CF_PROJECT_ID (game version $game_version)..."
+          curl -sS -X POST \
+            -H "X-Api-Token: $CF_API_TOKEN" \
+            -F "metadata=$metadata" \
+            -F "file=@$zip" \
+            "https://wow.curseforge.com/api/projects/$CF_PROJECT_ID/upload-file"
