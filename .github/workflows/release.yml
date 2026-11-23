@@ -39,9 +39,12 @@ jobs:
         run: |
           version="${GITHUB_REF_NAME#v}"
           mkdir -p dist/HealTide
-          cp HealTide.toc HealTide.lua README_FR.md dist/HealTide/
+          cp HealTide.toc HealTide.lua README_FR.md LICENSE dist/HealTide/
           (cd dist && zip -r "HealTide-${version}.zip" HealTide)
           unzip -l "dist/HealTide-${version}.zip"
+          for f in HealTide.toc HealTide.lua README_FR.md LICENSE; do
+            unzip -Z1 "dist/HealTide-${version}.zip" | grep -qx "HealTide/$f" || { echo "Missing HealTide/$f"; exit 1; }
+          done
 
       - name: Create GitHub release
         env:
@@ -66,14 +69,18 @@ jobs:
           game_version="${CF_GAME_VERSION:-1.60.1}"
           : "${CF_API_TOKEN:?Set the CF_API_TOKEN repository secret}"
           : "${CF_PROJECT_ID:?Set the CF_PROJECT_ID repository variable}"
-          metadata=$(jq -n \
+          metadata=$(mktemp)
+          trap 'rm -f "$metadata"' EXIT
+          jq -n \
             --arg changelog "$(cat CHANGELOG.md)" \
             --arg displayName "$version" \
             --arg gameVersion "$game_version" \
-            '{changelog:$changelog,changelogType:"markdown",displayName:$displayName,releaseType:"release",gameVersionNames:[$gameVersion]}')
+            '{changelog:$changelog,changelogType:"markdown",displayName:$displayName,releaseType:"release",gameVersionNames:[$gameVersion]}' > "$metadata"
           echo "Uploading $zip to CurseForge project $CF_PROJECT_ID (game version $game_version)..."
-          curl -sS -X POST \
+          response=$(curl -sS --fail-with-body -X POST \
             -H "X-Api-Token: $CF_API_TOKEN" \
-            -F "metadata=$metadata" \
+            -F "metadata=<$metadata" \
             -F "file=@$zip" \
-            "https://wow.curseforge.com/api/projects/$CF_PROJECT_ID/upload-file"
+            "https://wow.curseforge.com/api/projects/$CF_PROJECT_ID/upload-file")
+          echo "$response"
+          echo "$response" | jq -e '.id' >/dev/null

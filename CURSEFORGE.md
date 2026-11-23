@@ -1,8 +1,8 @@
 # HealTide
 
-**A compact heal prediction HUD for World of Warcraft: Forever — one thin bar per unit.**
+**A compact heal prediction HUD for World of Warcraft: Forever - one thin bar per card.**
 
-HealTide shows who is being healed, by how much, and how much would be wasted, in a compact cast-style bar per unit.
+HealTide shows who is being healed, by how much, and how much would be wasted, in a compact cast-style bar per card.
 
 Each card is a single bar:
 

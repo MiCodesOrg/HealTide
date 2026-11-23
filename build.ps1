@@ -3,9 +3,11 @@ $ErrorActionPreference = "Stop"
 $root = $PSScriptRoot
 $toc = Join-Path $root "HealTide.toc"
 $lua = Join-Path $root "HealTide.lua"
+$license = Join-Path $root "LICENSE"
 
 if (-not (Test-Path $toc)) { throw "Missing $toc" }
 if (-not (Test-Path $lua)) { throw "Missing $lua" }
+if (-not (Test-Path $license)) { throw "Missing $license" }
 
 $versionLine = Select-String -Path $toc -Pattern '^## Version:\s*(.+)$' | Select-Object -First 1
 if (-not $versionLine) { throw "No ## Version line in HealTide.toc" }
@@ -20,6 +22,7 @@ New-Item -ItemType Directory -Path $pkg -Force | Out-Null
 
 Copy-Item $toc $pkg
 Copy-Item $lua $pkg
+Copy-Item $license $pkg
 $readme = Join-Path $root "README_FR.md"
 if (Test-Path $readme) { Copy-Item $readme $pkg }
 
@@ -42,6 +45,7 @@ try {
     $names = $archive.Entries | ForEach-Object { $_.FullName }
     if ($names -notcontains "HealTide/HealTide.toc") { throw "Bad package: HealTide/HealTide.toc missing" }
     if ($names -notcontains "HealTide/HealTide.lua") { throw "Bad package: HealTide/HealTide.lua missing" }
+    if ($names -notcontains "HealTide/LICENSE") { throw "Bad package: HealTide/LICENSE missing" }
 } finally {
     $archive.Dispose()
 }

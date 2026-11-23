@@ -2,6 +2,13 @@
 
 ## 1.0.0
 
+- Cast tracking now follows the active cast GUID; instant, foreign, or non-heal casts no longer steal a hard-cast heal card.
+- `OnUpdate` and slash commands are protected by `pcall` to avoid per-frame error spam.
+- Incoming other-heal amounts use the unclamped healer total; long incoming predictions are refreshed instead of expiring at 3 s.
+- Overheal cap alpha resets correctly, health/heal colors read current health, and color access is protected.
+- A new cast clears the old `hadHeal` state; `/ht outgoing` hides active cards and blocks new ones.
+- `LICENSE` is included in release and CurseForge packages; release uploads fail on missing files or HTTP errors.
+- CI runs on `main`/pull requests only and uses `actions/checkout@v5`.
 - New heal prediction HUD for World of Warcraft: Forever (interface 16001), with one cast-style bar per card.
 - Native prediction through `UnitGetDetailedHealPrediction` / `UnitHealPredictionCalculator`.
 - Cast-style bar: health fill plus a heal extension, with the name and amount inside the bar.

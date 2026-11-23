@@ -1,8 +1,8 @@
 # HealTide
 
-**Un HUD de prédiction de soins compact pour World of Warcraft: Forever — une barre fine par unité.**
+**Un HUD de prédiction de soins compact pour World of Warcraft: Forever - une barre fine par carte.**
 
-HealTide affiche qui est soigné, de combien, et combien serait gaspillé, dans une barre compacte façon barre de cast par unité.
+HealTide affiche qui est soigné, de combien, et combien serait gaspillé, dans une barre compacte façon barre de cast par carte.
 
 Chaque carte est une seule barre :
 
@@ -78,7 +78,7 @@ Construire le zip :
 powershell -ExecutionPolicy Bypass -File build.ps1
 ```
 
-Le zip est écrit dans `dist/HealTide-<version>.zip` et contient `HealTide/HealTide.toc` et `HealTide/HealTide.lua`.
+Le zip est écrit dans `dist/HealTide-<version>.zip` et contient `HealTide/HealTide.toc`, `HealTide/HealTide.lua`, `HealTide/README_FR.md` et `HealTide/LICENSE`.
 
 Le workflow CI lance la vérification syntaxique et les tests hors-jeu sur les pushes vers `main` et sur les pull requests. Les tags sont gérés par le workflow `Release`, qui lance aussi les tests.
 

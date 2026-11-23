@@ -64,6 +64,8 @@ local DEFAULTS = {
         clampMode = "",
         clampModeInBar = "",
         twoCalculators = false,
+        secretMax = false,
+        secretMissing = false,
         events = 0,
         casts = 0,
         predictions = 0,
@@ -82,6 +84,7 @@ HT.byKey = {}
 HT.incomingCard = nil
 HT.castUnit = nil
 HT.castGUID = nil
+HT.castSpellID = nil
 HT.castIsHeal = nil
 HT.selfHealUntil = 0
 HT.lastCastRefresh = 0
@@ -128,7 +131,7 @@ end
 local function CountValue(value)
     if Num(value) then return value end
     if not IsSecret(value) then return nil end
-    local ok, text = pcall(string.format, "%d", value)
+    local ok, text = pcall(string.format, "%.0f", value)
     if not ok or type(text) ~= "string" or IsSecret(text) then return nil end
     local number = tonumber(text)
     if number then return number end
@@ -139,6 +142,13 @@ local function Above(value, fallback)
     if IsSecret(value) then return value end
     if type(value) == "number" and value > 0 then return value end
     return fallback
+end
+
+local function ClampNumber(value, minimum, maximum, fallback)
+    if type(value) ~= "number" or value ~= value then return fallback end
+    if value < minimum then return minimum end
+    if value > maximum then return maximum end
+    return value
 end
 
 local function Exists(unit)
@@ -195,7 +205,8 @@ function HT:LoadDB()
     for k, v in pairs(DEFAULTS.diagnostics) do
         if self.db.diagnostics[k] == nil then self.db.diagnostics[k] = v end
     end
-    if (self.db.layoutVersion or 1) < 3 then
+    if type(self.db.layoutVersion) ~= "number" then self.db.layoutVersion = 1 end
+    if self.db.layoutVersion < 3 then
         local w, h = self.db.width, self.db.height
         if (w == 300 and h == 40) or (w == 280 and h == 46) or (w == 260 and h == 22) then
             self.db.width = DEFAULTS.width
@@ -216,6 +227,21 @@ function HT:LoadDB()
         end
 
         self.db.layoutVersion = 3
+    end
+
+    self.db.width = ClampNumber(self.db.width, 120, 500, DEFAULTS.width)
+    self.db.height = ClampNumber(self.db.height, 10, 40, DEFAULTS.height)
+    self.db.gap = ClampNumber(self.db.gap, 0, 20, DEFAULTS.gap)
+    if type(self.db.locked) ~= "boolean" then self.db.locked = DEFAULTS.locked end
+    if type(self.db.showOutgoing) ~= "boolean" then self.db.showOutgoing = DEFAULTS.showOutgoing end
+    if type(self.db.showIncoming) ~= "boolean" then self.db.showIncoming = DEFAULTS.showIncoming end
+    if type(self.db.healsOnly) ~= "boolean" then self.db.healsOnly = DEFAULTS.healsOnly end
+    for _, key in ipairs({ "outgoingAnchor", "incomingAnchor" }) do
+        local anchor = self.db[key]
+        if type(anchor) ~= "table" or not Str(anchor.point) or not Str(anchor.relPoint)
+            or not Num(anchor.x) or not Num(anchor.y) then
+            self.db[key] = Copy(DEFAULTS[key])
+        end
     end
 end
 
@@ -275,6 +301,13 @@ function HT:MakeCalculator(mode)
     return calc
 end
 
+function HT:CalculatorHasSecrets(calc)
+    if not calc or not calc.HasSecretValues then return false end
+    local ok, value = pcall(calc.HasSecretValues, calc)
+    if ok and not IsSecret(value) then return value and true or false end
+    return false
+end
+
 function HT:EnsureCalculators()
     local maxMode, missMode = self:ClampModes()
     if not self.calcMax then self.calcMax = self:MakeCalculator(maxMode) end
@@ -285,26 +318,35 @@ function HT:EnsureCalculators()
         d.clampMode = self.calcMax and "MaximumHealth" or ""
         d.clampModeInBar = self.calcMissing and "MissingHealth" or ""
         d.twoCalculators = (self.calcMax ~= nil and self.calcMissing ~= nil and self.calcMax ~= self.calcMissing)
+        d.secretMax = self:CalculatorHasSecrets(self.calcMax)
+        d.secretMissing = self:CalculatorHasSecrets(self.calcMissing)
     end
 end
 
 function HT:Read(unit, calc)
-    if not calc or not unit then return nil, nil, nil, nil, nil, nil end
+    if not calc or not unit then return nil, nil, nil, nil, nil, nil, nil end
     if not pcall(UnitGetDetailedHealPrediction, unit, "player", calc) then
-        return nil, nil, nil, nil, nil, nil
+        return nil, nil, nil, nil, nil, nil, nil
     end
     local healthMax = Try(calc.GetMaximumHealth, calc)
     local total, mine, others, clamped = Try(calc.GetIncomingHeals, calc)
     local totalBase = Try(calc.GetTotalIncomingHeals, calc)
-    return total, mine, others, healthMax, totalBase, clamped
+    local totalFromHealer = Try(calc.GetTotalIncomingHealsFromHealer, calc)
+    return total, mine, others, healthMax, totalBase, clamped, totalFromHealer
 end
 
-function HT:OthersBase(mine, others, totalBase)
+function HT:OthersBase(mine, others, totalBase, totalFromHealer)
+    if Num(totalBase) and Num(totalFromHealer) then
+        local value = totalBase - totalFromHealer
+        if value < 0 then value = 0 end
+        return value
+    end
     if Num(totalBase) and Num(mine) then
         local value = totalBase - mine
         if value < 0 then value = 0 end
         return value
     end
+    if Num(others) then return others end
     if Num(totalBase) then return totalBase end
     return others
 end
@@ -541,7 +583,7 @@ function HT:PlaceIncoming()
     if not self.incomingCard or not self.db then return end
     local a = self.db.incomingAnchor or DEFAULTS.incomingAnchor
     self.incomingCard:ClearAllPoints()
-    self.incomingCard:SetPoint(a.point or "CENTER", UIParent, a.relPoint or "CENTER", a.x or 0, a.y or -330)
+    self.incomingCard:SetPoint(a.point or "CENTER", UIParent, a.relPoint or "CENTER", a.x or 0, a.y or -265)
 end
 
 function HT:Layout()
@@ -550,7 +592,7 @@ function HT:Layout()
     local step = (self.db.height or DEFAULTS.height) + (self.db.gap or DEFAULTS.gap)
     for i, card in ipairs(self.cards) do
         card:ClearAllPoints()
-        card:SetPoint(a.point or "CENTER", UIParent, a.relPoint or "CENTER", a.x or 0, (a.y or -170) - (i - 1) * step)
+        card:SetPoint(a.point or "CENTER", UIParent, a.relPoint or "CENTER", a.x or 0, (a.y or -200) - (i - 1) * step)
     end
 end
 
@@ -679,8 +721,12 @@ function HT:UpdateCard(card, unit)
         card:Hide()
         return
     end
+    if not sim then
+        local key = self:Key(unit)
+        if card.key and key and card.key ~= key then return end
+    end
 
-    local health, healthMax, maxMine, maxOthers, totalBase, missTotal, missMine, missOthers, missClamped
+    local health, healthMax, maxMine, maxOthers, totalBase, totalFromHealer, missTotal, missMine, missOthers, missClamped
 
     if sim then
         health = sim.health
@@ -688,6 +734,7 @@ function HT:UpdateCard(card, unit)
         maxMine = sim.mine or 0
         maxOthers = sim.others or 0
         totalBase = maxMine + maxOthers
+        totalFromHealer = maxMine
         local missing = math.max(0, healthMax - health)
         missMine = math.min(maxMine, missing)
         missOthers = math.min(maxOthers, missing - missMine)
@@ -696,11 +743,12 @@ function HT:UpdateCard(card, unit)
     else
         card.unit = unit
         local unitMax = Try(UnitHealthMax, unit)
-        local _, calcMine, calcOthers, calcMaxHealth, calcTotal = self:Read(unit, self.calcMax)
+        local _, calcMine, calcOthers, calcMaxHealth, calcTotal, _, calcTotalFromHealer = self:Read(unit, self.calcMax)
         local calcMissTotal, calcMissMine, calcMissOthers, _, _, calcMissClamped = self:Read(unit, self.calcMissing)
-        health = Try(UnitHealth, unit)
+        health = Try(UnitHealth, unit, false)
         healthMax = Above(calcMaxHealth, Above(unitMax, 1))
         maxMine, maxOthers, totalBase = calcMine, calcOthers, calcTotal
+        totalFromHealer = calcTotalFromHealer
         missTotal, missMine, missOthers, missClamped = calcMissTotal, calcMissMine, calcMissOthers, calcMissClamped
     end
 
@@ -719,15 +767,16 @@ function HT:UpdateCard(card, unit)
     else
         local curve = self:HealthCurve()
         if curve and UnitHealthPercent then
-            local ok, color = pcall(UnitHealthPercent, unit, false, curve)
-            if ok and color and color.GetRGB then
-                local ok2, cr, cg, cb = pcall(color.GetRGB, color)
-                if ok2 then
-                    if IsSecret(cr) then
-                        r, g, b = cr, cg, cb
-                    elseif cr ~= nil then
-                        r, g, b = cr, cg, cb
-                    end
+            local ok, cr, cg, cb = pcall(function()
+                local color = UnitHealthPercent(unit, false, curve)
+                if type(color) ~= "table" and type(color) ~= "userdata" then return nil end
+                return color:GetRGB()
+            end)
+            if ok and cr ~= nil then
+                if IsSecret(cr) then
+                    r, g, b = cr, cg, cb
+                else
+                    r, g, b = cr, cg, cb
                 end
             end
         end
@@ -736,7 +785,7 @@ function HT:UpdateCard(card, unit)
 
     local raw, effective
     if card.kind == "in" then
-        raw = self:OthersBase(maxMine, maxOthers, totalBase)
+        raw = self:OthersBase(maxMine, maxOthers, totalBase, totalFromHealer)
         effective = missOthers
     else
         raw = totalBase
@@ -763,7 +812,11 @@ function HT:UpdateCard(card, unit)
     -- while SetValue lets the client render the bars natively.
     card.otherRibbon:SetMinMaxValues(0, healthMax)
     card.otherRibbon:SetStatusBarColor(cr * otherScale, cg * otherScale, cb * otherScale, 0.95)
-    card.otherRibbon:SetValue(Keep(maxOthers, 0))
+    if card.kind == "in" then
+        card.otherRibbon:SetValue(Keep(raw, maxOthers))
+    else
+        card.otherRibbon:SetValue(Keep(maxOthers, 0))
+    end
     card.otherRibbon:Show()
 
     card.mineRibbon:SetMinMaxValues(0, healthMax)
@@ -782,6 +835,7 @@ function HT:UpdateCard(card, unit)
 
     if IsSecret(missClamped) then
         card.overCap:SetColorTexture(1, 0.25, 0.20, 0.95)
+        card.overCap:SetAlpha(0)
         card.overCap:Show()
         local ok = pcall(card.overCap.SetAlphaFromBoolean, card.overCap, missClamped, 1, 0)
         if not ok then card.overCap:Hide() end
@@ -789,10 +843,12 @@ function HT:UpdateCard(card, unit)
     elseif ratio > 0.01 then
         card:SetBackdropBorderColor(cr, cg, cb, 0.90)
         card.overCap:SetColorTexture(cr, cg, cb, 0.95)
+        card.overCap:SetAlpha(1)
         card.overCap:Show()
     elseif missClamped then
         card:SetBackdropBorderColor(1, 0.25, 0.20, 0.90)
         card.overCap:SetColorTexture(1, 0.25, 0.20, 0.95)
+        card.overCap:SetAlpha(1)
         card.overCap:Show()
     else
         card:SetBackdropBorderColor(0, 0, 0, 0.90)
@@ -906,23 +962,47 @@ end
 
 function HT:OnCastSent(targetName, castGUID, spellID)
     local healsOnly = (not self.db) or self.db.healsOnly
-    self.castIsHeal = (not healsOnly) or self:IsHeal(spellID)
-    if not self.castIsHeal then
-        self.castUnit = nil
+    local isHeal = (not healsOnly) or self:IsHeal(spellID)
+    local activeHeal = self.castIsHeal ~= false and self.castUnit and Exists(self.castUnit) and self:CastEnd()
+
+    if not isHeal then
+        if not activeHeal then
+            self.castUnit = nil
+            self.castGUID = nil
+            self.castSpellID = nil
+            self.castIsHeal = false
+        end
         return
     end
+
     local unit = self:Resolve(targetName)
     if not unit then return end
+
+    -- An instant heal sent during a hard-cast heal gets its own short card;
+    -- it must not steal the active cast's target or GUID.
+    if activeHeal and self.castGUID and castGUID and castGUID ~= self.castGUID then
+        self:ShowOutgoing(unit, 2)
+        if unit == "player" then
+            self.selfHealUntil = math.max(self.selfHealUntil or 0, GetTime() + 2)
+        end
+        return
+    end
+
     self.castUnit = unit
     self.castGUID = castGUID
+    self.castSpellID = spellID
+    self.castIsHeal = true
     if unit == "player" then
         self.selfHealUntil = GetTime() + 3
     else
         self.selfHealUntil = 0
     end
+    local existing = self:Find(unit)
+    if existing then
+        existing.castResolved = nil
+        existing.hadHeal = nil
+    end
     self:ShowOutgoing(unit, 3)
-    local card = self:Find(unit)
-    if card then card.castResolved = nil end
 end
 
 function HT:CastEnd()
@@ -946,18 +1026,26 @@ function HT:ShowCurrentCast(extra)
     if unit == "player" then
         self.selfHealUntil = (endSec and endSec + 2.5) or (GetTime() + 3)
     end
+    local existing = self:Find(unit)
+    if existing then
+        existing.castResolved = nil
+        existing.hadHeal = nil
+    end
     self:ShowOutgoing(unit, duration)
-    local card = self:Find(unit)
-    if card then card.castResolved = nil end
 end
 
-function HT:OnCastStart()
+function HT:OnCastStart(castGUID, spellID)
     if self.castIsHeal == false then return end
+    if castGUID and self.castGUID and castGUID ~= self.castGUID then return end
+    if not self.castGUID and castGUID then self.castGUID = castGUID end
+    if spellID and not self.castSpellID then self.castSpellID = spellID end
     self:ShowCurrentCast(2.5)
 end
 
-function HT:OnCastDelayed()
+function HT:OnCastDelayed(castGUID)
     if self.castIsHeal == false then return end
+    if castGUID and self.castGUID and castGUID ~= self.castGUID then return end
+    if not self.castGUID and castGUID then self.castGUID = castGUID end
     if not self.castUnit or not Exists(self.castUnit) then return end
 
     local endSec = self:CastEnd()
@@ -971,20 +1059,22 @@ function HT:OnCastDelayed()
     if card then
         card.castResolved = nil
         card.expires = GetTime() + duration
+        card:Show()
         self:UpdateCard(card, self.castUnit)
     else
         self:ShowOutgoing(self.castUnit, duration)
     end
 end
 
-function HT:OnCastDone()
+function HT:OnCastDone(castGUID)
     if self.castIsHeal == false then return end
+    if castGUID and self.castGUID and castGUID ~= self.castGUID then return end
     if not self.castUnit then return end
     if self.castUnit == "player" then
         self.selfHealUntil = math.max(self.selfHealUntil or 0, GetTime() + 2.5)
     end
     if self:CastEnd() then
-        self:OnCastDelayed()
+        self:OnCastDelayed(castGUID)
         return
     end
     local card = self:Find(self.castUnit)
@@ -993,16 +1083,24 @@ function HT:OnCastDone()
         card.expires = math.min(card.expires, GetTime() + 0.8)
         self:UpdateCard(card, self.castUnit)
     end
+
+    -- The cast is over. Keep the card tail, but stop treating this cast as
+    -- active so OnUpdate and later cast events cannot extend it.
+    self.castUnit = nil
+    self.castGUID = nil
+    self.castSpellID = nil
+    self.castIsHeal = nil
 end
 
 function HT:OnPrediction(unit)
     if not unit then return end
     self:Ready()
+    if unit ~= "player" then unit = self:Stable(unit) end
 
     if unit == "player" then
-        local _, mine, others, _, totalBase = self:Read("player", self.calcMax)
-        local amount = self:OthersBase(mine, others, totalBase)
-        local otherCount = CountValue(others)
+        local _, mine, others, _, totalBase, _, totalFromHealer = self:Read("player", self.calcMax)
+        local amount = self:OthersBase(mine, others, totalBase, totalFromHealer)
+        local otherCount = CountValue(amount)
         local showIncoming
         if otherCount ~= nil then
             showIncoming = otherCount > 0
@@ -1011,7 +1109,7 @@ function HT:OnPrediction(unit)
                 and (not Num(amount) or amount > 0)
         end
         if showIncoming then
-            if self.db.showIncoming then self:ShowIncoming(3) end
+            if self.db.showIncoming then self:ShowIncoming(5) end
         elseif self.incomingCard then
             self.incomingCard:Hide()
             self.incomingCard.expires = nil
@@ -1026,10 +1124,13 @@ function HT:OnPrediction(unit)
         return
     end
 
+    if not self.db.showOutgoing then return end
+
     local card = self:Find(unit)
     if card then
         local tail = card.castResolved and 0.6 or 3
         card.expires = GetTime() + tail
+        card:Show()
         self:UpdateCard(card, unit)
         return
     end
@@ -1044,17 +1145,21 @@ end
 
 function HT:Touch(unit)
     if not unit then return end
+    if unit ~= "player" then unit = self:Stable(unit) end
     if unit == "player" and self.incomingCard and self.incomingCard:IsShown() then
-        local _, _, others = self:Read("player", self.calcMax)
-        local count = CountValue(others)
+        local _, mine, others, _, totalBase, _, totalFromHealer = self:Read("player", self.calcMax)
+        local amount = self:OthersBase(mine, others, totalBase, totalFromHealer)
+        local count = CountValue(amount)
         if count ~= nil and count <= 0 then
             self.incomingCard:Hide()
             self.incomingCard.expires = nil
             self.incomingCard.sim = nil
         else
+            self.incomingCard.expires = math.max(self.incomingCard.expires or 0, GetTime() + 2)
             self:UpdateCard(self.incomingCard, "player")
         end
     end
+    if not self.db.showOutgoing then return end
     local card = self:Find(unit)
     if card and card:IsShown() then self:UpdateCard(card, unit) end
 end
@@ -1062,7 +1167,7 @@ end
 function HT:Validate()
     for i = #self.cards, 1, -1 do
         local card = self.cards[i]
-        if card.unit and not Exists(card.unit) then
+        if not card.sim and card.unit and not Exists(card.unit) then
             local replacement = nil
             if Str(card.key) and card.key:sub(1, 2) == "g:" then
                 local guid = card.key:sub(3)
@@ -1101,6 +1206,10 @@ function HT:Handle(event, ...)
     if event == "PLAYER_ENTERING_WORLD" then
         self:EnsureCalculators()
         self.selfHealUntil = 0
+        self.castUnit = nil
+        self.castGUID = nil
+        self.castSpellID = nil
+        self.castIsHeal = nil
         if self.db then
             for i = #self.cards, 1, -1 do self:HideCard(self.cards[i]) end
             if self.incomingCard then self.incomingCard:Hide(); self.incomingCard.expires = nil end
@@ -1120,20 +1229,21 @@ function HT:Handle(event, ...)
     end
 
     if event == "UNIT_SPELLCAST_START" or event == "UNIT_SPELLCAST_CHANNEL_START" then
-        local unit = ...
-        if unit == "player" then self:OnCastStart() end
+        local unit, castGUID, spellID = ...
+        if unit == "player" then self:OnCastStart(castGUID, spellID) end
         return
     end
 
     if event == "UNIT_SPELLCAST_DELAYED" or event == "UNIT_SPELLCAST_CHANNEL_UPDATE" then
-        local unit = ...
-        if unit == "player" then self:OnCastDelayed() end
+        local unit, castGUID = ...
+        if unit == "player" then self:OnCastDelayed(castGUID) end
         return
     end
 
     if event == "UNIT_SPELLCAST_SUCCEEDED" then
-        local unit = ...
+        local unit, castGUID = ...
         if unit == "player" and self.castIsHeal ~= false and self.castUnit and Exists(self.castUnit) then
+            if self.castGUID and castGUID and castGUID ~= self.castGUID then return end
             self:ShowOutgoing(self.castUnit, 1.5)
             local card = self:Find(self.castUnit)
             if card then card.castResolved = true end
@@ -1143,8 +1253,8 @@ function HT:Handle(event, ...)
 
     if event == "UNIT_SPELLCAST_STOP" or event == "UNIT_SPELLCAST_CHANNEL_STOP"
         or event == "UNIT_SPELLCAST_FAILED" or event == "UNIT_SPELLCAST_INTERRUPTED" then
-        local unit = ...
-        if unit == "player" then self:OnCastDone() end
+        local unit, castGUID = ...
+        if unit == "player" then self:OnCastDone(castGUID) end
         return
     end
 
@@ -1260,6 +1370,8 @@ function HT:Status()
         .. " | clamps: " .. tostring(self.db.diagnostics.clampMode or "?")
         .. " / " .. tostring(self.db.diagnostics.clampModeInBar or "?")
         .. " | two calculators: " .. (self.db.diagnostics.twoCalculators and "yes" or "no"))
+    Say("Secret values: max=" .. (self.db.diagnostics.secretMax and "yes" or "no")
+        .. " | missing=" .. (self.db.diagnostics.secretMissing and "yes" or "no"))
     Say("Outgoing: " .. (self.db.showOutgoing and "on" or "off")
         .. " | Incoming: " .. (self.db.showIncoming and "on" or "off")
         .. " | locked: " .. (self.db.locked and "yes" or "no")
@@ -1272,13 +1384,14 @@ function HT:Status()
         .. ", predictions=" .. tostring(self.db.diagnostics.predictions or 0)
         .. ", cards=" .. tostring(self.db.diagnostics.cards or 0))
     if self.db.diagnostics.lastError and self.db.diagnostics.lastError ~= "" then
-        Say("Last error (" .. tostring(self.db.diagnostics.lastErrorEvent) .. "): " .. tostring(self.db.diagnostics.lastError))
+        Say("Last error (" .. tostring(self.db.diagnostics.lastErrorEvent) .. ") at "
+            .. tostring(self.db.diagnostics.lastErrorAt or "?") .. ": " .. tostring(self.db.diagnostics.lastError))
     end
 end
 
 SLASH_HEALTIDE1 = "/ht"
 SLASH_HEALTIDE2 = "/healtide"
-SlashCmdList["HEALTIDE"] = function(message)
+function HT:Command(message)
     HT:Ready()
     local text = (message or ""):lower():gsub("^%s+", ""):gsub("%s+$", "")
     local cmd, arg = text:match("^(%S*)%s*(.*)$")
@@ -1301,6 +1414,9 @@ SlashCmdList["HEALTIDE"] = function(message)
         HT.db.locked = false; HT:ApplyLock(); Say("Cards unlocked; drag them with the mouse.")
     elseif cmd == "outgoing" then
         HT.db.showOutgoing = not HT.db.showOutgoing
+        if not HT.db.showOutgoing then
+            for i = #HT.cards, 1, -1 do HT:HideCard(HT.cards[i]) end
+        end
         Say("Outgoing cards: " .. (HT.db.showOutgoing and "on" or "off"))
     elseif cmd == "incoming" then
         HT.db.showIncoming = not HT.db.showIncoming
@@ -1327,25 +1443,32 @@ SlashCmdList["HEALTIDE"] = function(message)
     end
 end
 
+SlashCmdList["HEALTIDE"] = function(message)
+    local ok, err = pcall(HT.Command, HT, message)
+    if not ok then HT:ReportError("Slash", err) end
+end
+
 -- ---------------------------------------------------------------------------
 -- Startup
 -- ---------------------------------------------------------------------------
 
+function HT:ReportError(event, err)
+    if self.db and self.db.diagnostics then
+        self.db.diagnostics.lastError = tostring(err)
+        self.db.diagnostics.lastErrorEvent = tostring(event)
+        self.db.diagnostics.lastErrorAt = (date and date("%Y-%m-%d %H:%M:%S")) or tostring(GetTime())
+    end
+    local now = GetTime()
+    if now - (self.lastErrorAt or 0) > 5 then
+        self.lastErrorAt = now
+        Say("Error (" .. tostring(event) .. "): " .. tostring(err))
+    end
+end
+
 local eventFrame = CreateFrame("Frame")
 eventFrame:SetScript("OnEvent", function(_, event, ...)
     local ok, err = pcall(HT.Handle, HT, event, ...)
-    if not ok then
-        if HT.db and HT.db.diagnostics then
-            HT.db.diagnostics.lastError = tostring(err)
-            HT.db.diagnostics.lastErrorEvent = tostring(event)
-            HT.db.diagnostics.lastErrorAt = (date and date("%Y-%m-%d %H:%M:%S")) or tostring(GetTime())
-        end
-        local now = GetTime()
-        if now - HT.lastErrorAt > 5 then
-            HT.lastErrorAt = now
-            Say("Error (" .. tostring(event) .. "): " .. tostring(err))
-        end
-    end
+    if not ok then HT:ReportError(event, err) end
 end)
 
 for _, event in ipairs({
@@ -1373,35 +1496,39 @@ for _, event in ipairs({
     pcall(eventFrame.RegisterEvent, eventFrame, event)
 end
 
-local driver = CreateFrame("Frame")
-driver:SetScript("OnUpdate", function()
-    if not HT.db then return end
-    local now = GetTime()
+function HT:Refresh(now)
+    if not self.db then return end
 
     -- Keep the target card alive and refresh it while the heal is being cast
     -- or channelled. Once the cast is resolved, prediction events use a short
     -- tail; a stale UnitCastingInfo must not extend it again.
-    if HT.castIsHeal ~= false and HT.castUnit and Exists(HT.castUnit) then
-        local card = HT:Find(HT.castUnit)
+    if self.castIsHeal ~= false and self.castUnit and Exists(self.castUnit) then
+        local card = self:Find(self.castUnit)
         if card and not card.castResolved then
-            local endSec = HT:CastEnd()
-            if endSec and now - (HT.lastCastRefresh or 0) > 0.1 then
-                HT.lastCastRefresh = now
+            local endSec = self:CastEnd()
+            if endSec and now - (self.lastCastRefresh or 0) > 0.1 then
+                self.lastCastRefresh = now
                 card.expires = math.max(card.expires or 0, endSec + 2.5)
-                HT:UpdateCard(card, HT.castUnit)
+                self:UpdateCard(card, self.castUnit)
             end
         end
     end
 
-    for i = #HT.cards, 1, -1 do
-        local card = HT.cards[i]
-        if card.expires and now > card.expires then HT:HideCard(card) end
+    for i = #self.cards, 1, -1 do
+        local card = self.cards[i]
+        if card.expires and now > card.expires then self:HideCard(card) end
     end
-    if HT.incomingCard and HT.incomingCard.expires and now > HT.incomingCard.expires then
-        HT.incomingCard:Hide()
-        HT.incomingCard.expires = nil
-        HT.incomingCard.sim = nil
+    if self.incomingCard and self.incomingCard.expires and now > self.incomingCard.expires then
+        self.incomingCard:Hide()
+        self.incomingCard.expires = nil
+        self.incomingCard.sim = nil
     end
+end
+
+local driver = CreateFrame("Frame")
+driver:SetScript("OnUpdate", function()
+    local ok, err = pcall(HT.Refresh, HT, GetTime())
+    if not ok then HT:ReportError("OnUpdate", err) end
 end)
 
 _G.HealTideDebug = {

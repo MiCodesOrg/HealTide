@@ -35,7 +35,7 @@ if (-not $line) { throw "No ## Version line in HealTide.toc" }
 $version = $line.Matches.Groups[1].Value.Trim()
 $zip = Join-Path $root ("dist\HealTide-" + $version + ".zip")
 
-if (-not (Test-Path $zip)) { & (Join-Path $root "build.ps1") }
+& (Join-Path $root "build.ps1")
 if (-not (Test-Path $zip)) { throw "Build failed: $zip not found" }
 
 $changelog = if (Test-Path (Join-Path $root "CHANGELOG.md")) { Get-Content (Join-Path $root "CHANGELOG.md") -Raw } else { "Release $version" }
@@ -48,20 +48,23 @@ $metadata = @{
 } | ConvertTo-Json -Compress
 
 $metaFile = Join-Path $env:TEMP ("healtide-cf-" + [guid]::NewGuid().ToString("N") + ".json")
-Set-Content -Path $metaFile -Value $metadata -Encoding UTF8
+$utf8 = New-Object System.Text.UTF8Encoding($false)
+[System.IO.File]::WriteAllText($metaFile, $metadata, $utf8)
 
 try {
     Write-Output "Uploading $zip to project $ProjectId (game version $GameVersion, $ReleaseType)..."
-    $response = & curl.exe -sS -X POST `
+    $response = & curl.exe -sS --fail-with-body -X POST `
         -H "X-Api-Token: $ApiToken" `
         -F "metadata=<$metaFile" `
         -F "file=@$zip" `
         "$base/api/projects/$ProjectId/upload-file"
+    if ($LASTEXITCODE -ne 0) { throw "CurseForge upload failed (HTTP error)." }
     Write-Output $response
-    if ($response -match '"id"') {
-        Write-Output "Upload accepted. Check the project's Files page and release the file if needed."
+    $json = ($response -join "") | ConvertFrom-Json
+    if ($json.id) {
+        Write-Output "Upload accepted (file id $($json.id)). Check the project's Files page and release the file if needed."
     } else {
-        Write-Output "No file id returned. Try -ListVersions and pass the exact game version name, or upload the zip manually."
+        throw "No file id returned. Try -ListVersions and pass the exact game version name, or upload the zip manually."
     }
 } finally {
     Remove-Item $metaFile -Force -ErrorAction SilentlyContinue

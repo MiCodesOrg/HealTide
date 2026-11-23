@@ -1,10 +1,12 @@
 ## Interface: 16001
 ## Title: HealTide
-## Notes: Cast-style heal prediction bars for World of Warcraft: Forever - one bar per unit.
+## Notes: Cast-style heal prediction bars for World of Warcraft: Forever - one bar per card.
 ## Author: Mickael
 ## Version: 1.0.0
 ## SavedVariables: HealTideDB
 ## X-Category: Combat
+## X-License: MIT
+## X-Website: https://github.com/MiCodesOrg/HealTide
 ## IconTexture: Interface\Icons\Spell_Holy_Heal
 
 HealTide.lua

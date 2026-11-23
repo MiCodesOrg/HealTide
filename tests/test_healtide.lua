@@ -40,6 +40,7 @@ local function NewTexture()
     function t:GetWidth() return self.width or 0 end
     function t:GetHeight() return self.height or 0 end
     function t:SetAlpha(a) self.alpha = a end
+    function t:GetAlpha() return self.alpha or 1 end
     function t:SetAlphaFromBoolean(v, a, b) self.alpha = v and a or b end
     function t:SetDrawLayer() end
     function t:GetDrawLayer() return "ARTWORK", 0 end
@@ -209,7 +210,7 @@ end
 
 local function NewCalculator()
     local c = {
-        current = { total = 0, mine = 0, others = 0, max = 1000, totalAll = 0, clamped = false },
+        current = { total = 0, mine = 0, others = 0, max = 1000, totalAll = 0, totalFromHealer = 0, clamped = false },
         lastClampMode = nil,
     }
     function c:SetMaximumHealthMode() end
@@ -219,6 +220,7 @@ local function NewCalculator()
     function c:GetMaximumHealth() return self.current.max end
     function c:GetIncomingHeals() return self.current.total, self.current.mine, self.current.others, self.current.clamped end
     function c:GetTotalIncomingHeals() return self.current.totalAll end
+    function c:GetTotalIncomingHealsFromHealer() return self.current.totalFromHealer end
     return c
 end
 
@@ -226,7 +228,7 @@ function CreateUnitHealPredictionCalculator() return NewCalculator() end
 function UnitGetDetailedHealPrediction(u, _, calc)
     local v = units[u]
     if not v then
-        calc.current = { total = 0, mine = 0, others = 0, max = 1000, totalAll = 0, clamped = false }
+        calc.current = { total = 0, mine = 0, others = 0, max = 1000, totalAll = 0, totalFromHealer = 0, clamped = false }
         return
     end
     local p = v.prediction
@@ -242,7 +244,7 @@ function UnitGetDetailedHealPrediction(u, _, calc)
     local others, oc = clamp(p.others)
     calc.current = {
         total = total, mine = mine, others = others, max = p.max,
-        totalAll = p.total, clamped = tc or mc or oc,
+        totalAll = p.total, totalFromHealer = p.mine or 0, clamped = tc or mc or oc,
     }
 end
 
@@ -382,13 +384,50 @@ check(targetCard and targetCard.expires <= mockTime + 0.65, "resolved cast ignor
 castEnd = nil
 
 -- Pushback/delay: the card must survive to the new cast end.
+Fire("UNIT_SPELLCAST_SENT", "player", "Cible", "castPush", 2060)
 castEnd = mockTime + 4
-Fire("UNIT_SPELLCAST_DELAYED", "player", "cast1", 2060)
+Fire("UNIT_SPELLCAST_DELAYED", "player", "castPush", 2060)
 check(targetCard and targetCard.expires >= mockTime + 6, "delayed cast extends card")
-Fire("UNIT_SPELLCAST_STOP", "player", "cast1", 2060)
+Fire("UNIT_SPELLCAST_STOP", "player", "castPush", 2060)
 check(targetCard and targetCard.expires > mockTime + 3, "stop during active cast does not hide")
 castEnd = nil
 
+-- B1: a foreign instant or non-heal cast must not steal the active heal cast.
+Fire("PLAYER_ENTERING_WORLD")
+units.target.health = 400
+units.target.prediction = { total = 250, mine = 200, others = 50, max = 1000 }
+Fire("UNIT_SPELLCAST_SENT", "player", "Cible", "healLong", 2060)
+local b1Card = CardFor("target")
+castEnd = mockTime + 3
+Fire("UNIT_SPELLCAST_START", "player", "healLong", 2060)
+check(b1Card and b1Card:IsShown(), "long heal card shown")
+Fire("UNIT_SPELLCAST_SENT", "player", "Cible", "shieldCast", 17)
+Fire("UNIT_SPELLCAST_SUCCEEDED", "player", "shieldCast", 17)
+Fire("UNIT_SPELLCAST_STOP", "player", "shieldCast", 17)
+check(HealTideDebug.addon.castUnit == "target" and HealTideDebug.addon.castGUID == "healLong", "foreign shield ignored")
+check(b1Card and not b1Card.castResolved, "foreign shield does not resolve heal card")
+units.party1.prediction = { total = 100, mine = 100, others = 0, max = 1000 }
+Fire("UNIT_SPELLCAST_SENT", "player", "Ami", "instantHeal", 2060)
+check(CardFor("party1") ~= nil, "instant heal gets its own card")
+check(HealTideDebug.addon.castUnit == "target", "instant heal does not steal long cast")
+Fire("UNIT_SPELLCAST_SUCCEEDED", "player", "instantHeal", 2060)
+check(b1Card and not b1Card.castResolved, "foreign instant success ignored")
+castEnd = nil
+Fire("UNIT_SPELLCAST_SUCCEEDED", "player", "healLong", 2060)
+Fire("UNIT_SPELLCAST_STOP", "player", "healLong", 2060)
+check(b1Card and b1Card.castResolved, "long heal resolves with its own GUID")
+check(HealTideDebug.addon.castUnit == nil, "cast state cleared after resolution")
+
+-- H7: a new cast on the same card clears the previous hadHeal flag.
+Fire("PLAYER_ENTERING_WORLD")
+units.target.prediction = { total = 250, mine = 200, others = 50, max = 1000 }
+Fire("UNIT_SPELLCAST_SENT", "player", "Cible", "castH7a", 2060)
+local h7Card = CardFor("target")
+check(h7Card and h7Card.hadHeal, "first cast marked hadHeal")
+units.target.prediction = { total = 0, mine = 0, others = 0, max = 1000 }
+Fire("UNIT_SPELLCAST_SENT", "player", "Cible", "castH7b", 2060)
+check(h7Card and h7Card.expires and h7Card.expires > mockTime + 2.5, "new cast clears stale hadHeal")
+Fire("PLAYER_ENTERING_WORLD")
 units.player.prediction = { total = 300, mine = 0, others = 300, max = 1000 }
 Fire("UNIT_HEAL_PREDICTION", "player")
 local incoming = HealTideDebug.incoming()
@@ -411,6 +450,22 @@ units.player.health = 500
 units.player.prediction = { total = 0, mine = 0, others = 0, max = 1000 }
 Fire("UNIT_HEALTH", "player")
 check(not incoming:IsShown(), "incoming hides when heal lands")
+
+-- A self-heal clamped above max must not hide other players' incoming heals.
+Fire("PLAYER_ENTERING_WORLD")
+units.player.health = 1000
+units.player.prediction = { total = 1500, mine = 1200, others = 300, max = 1000 }
+Fire("UNIT_HEAL_PREDICTION", "player")
+local clampedIncoming = HealTideDebug.incoming()
+check(clampedIncoming and clampedIncoming:IsShown(), "incoming shown when mine clamps above max")
+check(clampedIncoming and clampedIncoming.otherRibbon:GetValue() == 300, "incoming raw others = 300")
+check(clampedIncoming and clampedIncoming.amount:GetText() == "+300", "incoming raw amount = +300")
+
+-- A long incoming prediction must stay alive past the initial 3 s.
+mockTime = mockTime + 4
+Fire("UNIT_HEALTH", "player")
+check(clampedIncoming and clampedIncoming:IsShown(), "long incoming stays visible")
+check(clampedIncoming and clampedIncoming.expires and clampedIncoming.expires >= mockTime + 1.9, "incoming expiry extended")
 
 -- A self-heal is "mine", so the incoming card hides it; it must appear on
 -- the outgoing card for the player instead.
@@ -471,6 +526,20 @@ check(yTarget and yParty and math.abs((yTarget - yParty) - 26) < 0.1, "spacing o
 SlashCmdList["HEALTIDE"]("spacing 2")
 Fire("PLAYER_ENTERING_WORLD")
 
+-- H8: disabling outgoing hides active cards and blocks new outgoing cards.
+units.target.prediction = { total = 250, mine = 200, others = 50, max = 1000 }
+Fire("UNIT_SPELLCAST_SENT", "player", "Cible", "castOutToggle", 2060)
+local toggleCard = CardFor("target")
+check(toggleCard and toggleCard:IsShown(), "outgoing card before toggle")
+SlashCmdList["HEALTIDE"]("outgoing")
+check(toggleCard and not toggleCard:IsShown(), "outgoing off hides card")
+units.target.prediction = { total = 300, mine = 250, others = 50, max = 1000 }
+Fire("UNIT_HEAL_PREDICTION", "target")
+check(CardFor("target") == nil, "outgoing off blocks prediction card")
+SlashCmdList["HEALTIDE"]("outgoing")
+check(HealTideDebug.db().showOutgoing == true, "outgoing back on")
+Fire("PLAYER_ENTERING_WORLD")
+
 -- Full-health overheal: no heal fill, red end cap.
 Fire("PLAYER_ENTERING_WORLD")
 units.target.health = 1000
@@ -485,6 +554,7 @@ check(overCard and overCard.sparkHeal:IsShown(), "heal spark stays visible at fu
 local br, bg, bb = overCard:GetBackdropBorderColor()
 check(br == 1 and bg == 0.25 and bb == 0.20, "overheal border red")
 check(overCard and overCard.overCap:IsShown(), "overheal cap shown")
+check(overCard and overCard.overCap:GetAlpha() == 1, "overheal cap alpha = 1")
 check(overCard and overCard.amount:GetText() == "+600", "overheal amount = +600")
 
 -- A smaller heal at full health must produce a shorter extension.
@@ -513,6 +583,8 @@ local dr, dg, db = demoCard.mineRibbon:GetStatusBarColor()
 check(dr == 0.95 and dg == 0.90 and db == 0.25, "demo heal segment yellow")
 check(demoCard and demoCard.amount:GetText() == "+600", "demo amount = +600")
 check(demoCard and demoCard.title:GetText() == "Demo target", "demo title = Demo target")
+Fire("GROUP_ROSTER_UPDATE")
+check(demoCard and demoCard:IsShown(), "demo survives roster update")
 local demoIncoming = HealTideDebug.incoming()
 check(demoIncoming and demoIncoming.sim ~= nil, "demo incoming simulated")
 check(demoIncoming and demoIncoming.healthStrip:GetValue() == 700, "demo incoming health = 700")
@@ -562,6 +634,15 @@ Fire("UNIT_HEAL_PREDICTION", "player")
 check(HealTideDebug.incoming() and HealTideDebug.incoming():IsShown(), "secret others incoming shown")
 check(HealTideDebug.incoming() and HealTideDebug.incoming().otherRibbon:GetValue() == 100, "secret incoming others = 100")
 secretMode = false
+
+-- B3: OnUpdate must catch and report errors instead of spamming every frame.
+local originalRefresh = HealTideDebug.addon.Refresh
+HealTideDebug.addon.Refresh = function() error("test refresh error") end
+HealTideDebug.addon.lastErrorAt = GetTime()
+driver.__scripts.OnUpdate(driver, 0.1)
+check(tostring(HealTideDebug.db().diagnostics.lastError):find("test refresh error", 1, true) ~= nil,
+    "OnUpdate errors are caught")
+HealTideDebug.addon.Refresh = originalRefresh
 
 local errors = 0
 for _, msg in ipairs(chat.messages) do if tostring(msg):find("Error", 1, true) then errors = errors + 1 end end

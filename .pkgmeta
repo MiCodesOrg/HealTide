@@ -9,7 +9,6 @@ ignore:
   - README_FR.md
   - CURSEFORGE.md
   - CHANGELOG.md
-  - LICENSE
   - build.ps1
   - publish-curseforge.ps1
   - tests

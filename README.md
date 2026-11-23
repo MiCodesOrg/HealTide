@@ -1,8 +1,8 @@
 # HealTide
 
-**A compact heal prediction HUD for World of Warcraft: Forever — one thin bar per unit.**
+**A compact heal prediction HUD for World of Warcraft: Forever - one thin bar per card.**
 
-HealTide shows who is being healed, by how much, and how much would be wasted, in a compact cast-style bar per unit.
+HealTide shows who is being healed, by how much, and how much would be wasted, in a compact cast-style bar per card.
 
 Each card is a single bar:
 
@@ -78,7 +78,7 @@ Build the release zip:
 powershell -ExecutionPolicy Bypass -File build.ps1
 ```
 
-The zip is written to `dist/HealTide-<version>.zip` and contains `HealTide/HealTide.toc` and `HealTide/HealTide.lua`.
+The zip is written to `dist/HealTide-<version>.zip` and contains `HealTide/HealTide.toc`, `HealTide/HealTide.lua`, `HealTide/README_FR.md`, and `HealTide/LICENSE`.
 
 The CI workflow runs the Lua syntax check and offline tests on pushes to `main` and on pull requests. Tags are handled by the `Release` workflow, which also runs the tests.
 
