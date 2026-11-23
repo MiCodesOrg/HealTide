@@ -80,6 +80,8 @@ powershell -ExecutionPolicy Bypass -File build.ps1
 
 Le zip est écrit dans `dist/HealTide-<version>.zip` et contient `HealTide/HealTide.toc` et `HealTide/HealTide.lua`.
 
+Le workflow CI lance la vérification syntaxique et les tests hors-jeu sur les pushes vers `main` et sur les pull requests. Les tags sont gérés par le workflow `Release`, qui lance aussi les tests.
+
 ## Licence
 
 MIT — voir `LICENSE`.

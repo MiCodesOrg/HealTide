@@ -80,7 +80,7 @@ powershell -ExecutionPolicy Bypass -File build.ps1
 
 The zip is written to `dist/HealTide-<version>.zip` and contains `HealTide/HealTide.toc` and `HealTide/HealTide.lua`.
 
-The GitHub Actions workflow runs the Lua syntax check and offline tests on every push.
+The CI workflow runs the Lua syntax check and offline tests on pushes to `main` and on pull requests. Tags are handled by the `Release` workflow, which also runs the tests.
 
 ## Release
 
