@@ -644,6 +644,13 @@ check(tostring(HealTideDebug.db().diagnostics.lastError):find("test refresh erro
     "OnUpdate errors are caught")
 HealTideDebug.addon.Refresh = originalRefresh
 
+SlashCmdList["HEALTIDE"]("secrets")
+local sawB2 = false
+for _, msg in ipairs(chat.messages) do
+    if tostring(msg):find("B2 calc secret", 1, true) then sawB2 = true end
+end
+check(sawB2, "secrets command prints B2 diagnostics")
+
 local errors = 0
 for _, msg in ipairs(chat.messages) do if tostring(msg):find("Error", 1, true) then errors = errors + 1 end end
 check(errors == 0, "no addon errors")

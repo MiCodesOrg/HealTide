@@ -1389,6 +1389,62 @@ function HT:Status()
     end
 end
 
+function HT:SecretCheck()
+    self:Ready()
+    local function Flag(value)
+        if IsSecret(value) then return "secret" end
+        if value == nil then return "nil" end
+        return tostring(value)
+    end
+
+    Say("B2 health: " .. Flag(Try(UnitHealth, "player"))
+        .. " | current-only: " .. Flag(Try(UnitHealth, "player", false)))
+
+    local curve = self:HealthCurve()
+    if curve and UnitHealthPercent then
+        local ok, color = pcall(UnitHealthPercent, "player", false, curve)
+        if not ok then
+            Say("B2 health percent: error")
+        else
+            local rgb = "?"
+            local okRGB, r = pcall(function()
+                if type(color) ~= "table" and type(color) ~= "userdata" then return nil end
+                return color:GetRGB()
+            end)
+            if okRGB then rgb = Flag(r) end
+            Say("B2 health percent: secret=" .. (IsSecret(color) and "yes" or "no")
+                .. " | rgb=" .. rgb)
+        end
+    end
+
+    if not CreateUnitHealPredictionCalculator or not UnitGetDetailedHealPrediction then
+        Say("B2 calculator: unavailable")
+        return
+    end
+    local okCalc, calc = pcall(CreateUnitHealPredictionCalculator)
+    if not okCalc or not calc then
+        Say("B2 calculator: create failed")
+        return
+    end
+    if not pcall(UnitGetDetailedHealPrediction, "player", "player", calc) then
+        Say("B2 calculator: prediction call failed")
+        return
+    end
+
+    local hasSecret = "?"
+    if calc.HasSecretValues then
+        local okSecret, value = pcall(calc.HasSecretValues, calc)
+        if okSecret then hasSecret = Flag(value) end
+    end
+    local total, mine, others, clamped = Try(calc.GetIncomingHeals, calc)
+    local totalBase = Try(calc.GetTotalIncomingHeals, calc)
+    local totalFromHealer = Try(calc.GetTotalIncomingHealsFromHealer, calc)
+    Say("B2 calc secret: " .. hasSecret)
+    Say("B2 incoming: total=" .. Flag(total) .. " | mine=" .. Flag(mine)
+        .. " | others=" .. Flag(others) .. " | clamped=" .. Flag(clamped))
+    Say("B2 raw: total=" .. Flag(totalBase) .. " | fromHealer=" .. Flag(totalFromHealer))
+end
+
 SLASH_HEALTIDE1 = "/ht"
 SLASH_HEALTIDE2 = "/healtide"
 function HT:Command(message)
@@ -1398,7 +1454,7 @@ function HT:Command(message)
     cmd = cmd or ""
 
     if cmd == "" or cmd == "help" then
-        Say("Commands: /ht test | live | stop | lock | unlock | outgoing | incoming | healsonly | width <n> | height <n> | spacing <n> | reset | status")
+        Say("Commands: /ht test | live | stop | lock | unlock | outgoing | incoming | healsonly | width <n> | height <n> | spacing <n> | reset | status | secrets")
     elseif cmd == "test" then
         HT:Demo()
         Say("Demo cards shown for 15 s (target 50%: 250 others + 350 you; you 70%: 300 incoming).")
@@ -1438,6 +1494,8 @@ function HT:Command(message)
         HT:Reset(); Say("Settings reset.")
     elseif cmd == "status" then
         HT:Status()
+    elseif cmd == "secrets" then
+        HT:SecretCheck()
     else
         Say("Unknown command. /ht help")
     end

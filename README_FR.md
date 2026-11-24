@@ -50,6 +50,7 @@ Tes propres soins sur toi apparaissent sur la carte sortante **You** ; la carte 
 | `/ht spacing 2` | Espacement entre les cartes (0–20). |
 | `/ht reset` | Valeurs par défaut. |
 | `/ht status` | API, clamp, réglages, diagnostics. |
+| `/ht secrets` | Diagnostic des valeurs secrètes (vie, calculateur, soins reçus). |
 
 ## Compatibilité
 

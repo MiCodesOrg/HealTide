@@ -50,6 +50,7 @@ Your own heals on yourself appear on the outgoing **You** card; the incoming car
 | `/ht spacing 2` | Gap between cards (0–20). |
 | `/ht reset` | Defaults. |
 | `/ht status` | API, clamp, settings, diagnostics. |
+| `/ht secrets` | Secret-value diagnostics (health, calculator, incoming values). |
 
 ## Compatibility
 
