@@ -18,8 +18,8 @@
 - Heal extension continues past the bar to show overheal, proportional and secret-value safe (orange extension/cap when values are hidden).
 - Cards shorten their timeout when the prediction is readable; with secret values, cast tails and prediction events drive the expiry.
 - Resolved casts ignore stale `UnitCastingInfo` and use a 0.6s tail for later prediction events.
-- Self-heals update the outgoing **You** card; the incoming card shows other players' heals in a group and stays hidden in solo.
-- Outgoing target cards plus AoE group cards during heal casts, and an incoming card for the player.
+- Self-heals update the outgoing **You** card; the incoming bar is a minimal received-heal bar, including from healers outside the group.
+- Outgoing target cards plus AoE group cards during heal casts, and a minimal incoming bar for the player.
 - Secret-value safe StatusBars; amounts hidden, orange overheal indicator.
 - Demo mode (`/ht test`), live mode (`/ht live`), movement lock, size/spacing settings, heals-only toggle, diagnostics.
 - Offline Lua test harness and tag-driven GitHub/CurseForge release workflow.

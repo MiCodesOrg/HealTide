@@ -410,8 +410,13 @@ function HT:SizeCard(card)
     card.healthStrip:SetPoint("BOTTOMRIGHT", card, "BOTTOMRIGHT", -CARD_INSET, CARD_INSET)
 
     card.otherRibbon:ClearAllPoints()
-    card.otherRibbon:SetPoint("TOPLEFT", card.healthStrip:GetStatusBarTexture(), "TOPRIGHT", 0, 0)
-    card.otherRibbon:SetPoint("BOTTOMLEFT", card.healthStrip:GetStatusBarTexture(), "BOTTOMRIGHT", 0, 0)
+    if card.kind == "in" then
+        card.otherRibbon:SetPoint("TOPLEFT", card, "TOPLEFT", CARD_INSET, -CARD_INSET)
+        card.otherRibbon:SetPoint("BOTTOMLEFT", card, "BOTTOMLEFT", CARD_INSET, CARD_INSET)
+    else
+        card.otherRibbon:SetPoint("TOPLEFT", card.healthStrip:GetStatusBarTexture(), "TOPRIGHT", 0, 0)
+        card.otherRibbon:SetPoint("BOTTOMLEFT", card.healthStrip:GetStatusBarTexture(), "BOTTOMRIGHT", 0, 0)
+    end
     card.otherRibbon:SetWidth(self:BarWidth())
 
     card.mineRibbon:ClearAllPoints()
@@ -420,8 +425,13 @@ function HT:SizeCard(card)
     card.mineRibbon:SetWidth(self:BarWidth())
 
     card.otherOver:ClearAllPoints()
-    card.otherOver:SetPoint("TOPLEFT", card.healthStrip:GetStatusBarTexture(), "TOPRIGHT", 0, 0)
-    card.otherOver:SetPoint("BOTTOMLEFT", card.healthStrip:GetStatusBarTexture(), "BOTTOMRIGHT", 0, 0)
+    if card.kind == "in" then
+        card.otherOver:SetPoint("TOPLEFT", card, "TOPLEFT", CARD_INSET, -CARD_INSET)
+        card.otherOver:SetPoint("BOTTOMLEFT", card, "BOTTOMLEFT", CARD_INSET, CARD_INSET)
+    else
+        card.otherOver:SetPoint("TOPLEFT", card.healthStrip:GetStatusBarTexture(), "TOPRIGHT", 0, 0)
+        card.otherOver:SetPoint("BOTTOMLEFT", card.healthStrip:GetStatusBarTexture(), "BOTTOMRIGHT", 0, 0)
+    end
     card.otherOver:SetWidth(self:BarWidth())
 
     card.mineOver:ClearAllPoints()
@@ -607,6 +617,17 @@ function HT:CreateCard(kind)
         if GameTooltip then GameTooltip:Hide() end
     end)
     card:EnableMouse(false)
+    if kind == "in" then
+        card:SetBackdropColor(0, 0, 0, 0)
+        card:SetBackdropBorderColor(0, 0, 0, 0)
+        card.healthStrip:Hide()
+        card.title:Hide()
+        card.amount:Hide()
+        card.overCap:Hide()
+        card.healEdge:Hide()
+        card.sparkHealth:Hide()
+        card.sparkHeal:Hide()
+    end
     card:Hide()
     self:SizeCard(card)
     return card
@@ -895,11 +916,20 @@ function HT:UpdateCard(card, unit)
         card.mineOver:Hide()
     end
 
-    card.healEdge:Show()
-    card.sparkHealth:Show()
-    card.sparkHeal:Show()
+    if card.kind == "in" then
+        card.healEdge:Hide()
+        card.sparkHealth:Hide()
+        card.sparkHeal:Hide()
+    else
+        card.healEdge:Show()
+        card.sparkHealth:Show()
+        card.sparkHeal:Show()
+    end
 
-    if secretValues then
+    if card.kind == "in" then
+        card.overCap:Hide()
+        card:SetBackdropBorderColor(0, 0, 0, 0)
+    elseif secretValues then
         card.overCap:SetColorTexture(1, 0.55, 0.12, 0.95)
         card.overCap:SetAlpha(0)
         card.overCap:Show()
@@ -1169,9 +1199,8 @@ function HT:OnPrediction(unit)
     if unit ~= "player" then unit = self:Stable(unit) end
 
     if unit == "player" then
-        local grouped = #self:GroupUnits() > 1
-        if grouped then
-            if self.db.showIncoming then self:ShowIncoming(5) end
+        if self.db.showIncoming then
+            self:ShowIncoming(5)
         elseif self.incomingCard then
             self.incomingCard:Hide()
             self.incomingCard.expires = nil

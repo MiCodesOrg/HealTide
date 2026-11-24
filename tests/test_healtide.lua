@@ -495,18 +495,18 @@ Fire("UNIT_HEAL_PREDICTION", "player")
 check(selfCard and selfCard.mineRibbon:GetValue() == 400, "self-heal prediction updates outgoing card")
 check(selfCard and selfCard.amount:GetText() == "+400", "self-heal amount = +400")
 check(selfCard and selfCard.title:GetText() == "You", "self-heal title = You")
-check(not HealTideDebug.incoming():IsShown(), "incoming hidden during solo self-heal")
+check(HealTideDebug.incoming() and HealTideDebug.incoming().otherRibbon:GetValue() == 0, "self-heal has no incoming ribbon")
+check(HealTideDebug.incoming() and not HealTideDebug.incoming().healthStrip:IsShown(), "incoming chrome hidden")
 
--- Even with other healers mixed in, the incoming card is independent and
+-- Even with other healers mixed in, the incoming bar is independent and
 -- shows their heals while the outgoing You card shows the self-heal.
-units.party1 = savedParty1
-units.mouseover = savedMouseover
 units.player.prediction = { total = 400, mine = 300, others = 100, max = 1000 }
 Fire("UNIT_HEAL_PREDICTION", "player")
-check(HealTideDebug.incoming() and HealTideDebug.incoming():IsShown(), "incoming shows others during self-heal")
 check(HealTideDebug.incoming() and HealTideDebug.incoming().otherRibbon:GetValue() == 100, "incoming others = 100 during self-heal")
 check(selfCard and selfCard.otherRibbon:GetValue() == 100, "self-heal outgoing others = 100")
 check(selfCard and selfCard.mineRibbon:GetValue() == 300, "self-heal outgoing mine = 300")
+units.party1 = savedParty1
+units.mouseover = savedMouseover
 
 -- A lingering prediction event after the cast must not extend the card to 3s.
 Fire("UNIT_SPELLCAST_SUCCEEDED", "player", "castSelf", 2060)
@@ -645,7 +645,7 @@ check(secretCard and secretCard.overCap:IsShown(), "secret overheal cap shown")
 check(secretCard and secretCard.otherOver:GetAlpha() == 1, "secret overheal overlay alpha 1")
 check(secretCard and secretCard.mineOver:GetAlpha() == 1, "secret mine overheal overlay alpha 1")
 
--- Secret values: incoming is hidden in solo, shown in a group.
+-- Secret values: incoming is a minimal ribbon; a self-heal has no fill.
 Fire("PLAYER_ENTERING_WORLD")
 units.player.health = 500
 local savedSecretParty = units.party1
@@ -653,12 +653,12 @@ units.party1 = nil
 units.mouseover = nil
 units.player.prediction = { total = 400, mine = 400, others = 0, max = 1000 }
 Fire("UNIT_HEAL_PREDICTION", "player")
-check(not HealTideDebug.incoming():IsShown(), "secret solo self-only incoming hidden")
-units.party1 = savedSecretParty
+check(HealTideDebug.incoming() and HealTideDebug.incoming().otherRibbon:GetValue() == 0, "secret self-only incoming ribbon 0")
+check(HealTideDebug.incoming() and not HealTideDebug.incoming().healthStrip:IsShown(), "secret incoming chrome hidden")
 units.player.prediction = { total = 450, mine = 350, others = 100, max = 1000 }
 Fire("UNIT_HEAL_PREDICTION", "player")
-check(HealTideDebug.incoming() and HealTideDebug.incoming():IsShown(), "secret group incoming shown")
-check(HealTideDebug.incoming() and HealTideDebug.incoming().otherRibbon:GetValue() == 100, "secret incoming others = 100")
+check(HealTideDebug.incoming() and HealTideDebug.incoming().otherRibbon:GetValue() == 100, "secret solo incoming outsiders = 100")
+units.party1 = savedSecretParty
 secretMode = false
 
 -- B3: OnUpdate must catch and report errors instead of spamming every frame.

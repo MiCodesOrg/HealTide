@@ -10,15 +10,15 @@ Each card is a single bar:
 - **Heals** extend the bar from the current health position to the predicted total. Your own heal is a brighter shade; other players' heals are slightly darker.
 - **Overheal** turns the heal extension orange when the client signals overheal. The extension continues past the bar; its length beyond the bar is the wasted amount. Amounts are hidden and the exact severity gradient is unavailable when the client marks values secret.
 
-The outgoing target cards and the incoming card are independent; in a group both can be visible, while the incoming card stays hidden in solo.
+The incoming card is a minimal received-heal bar: no health bar, name, or amount. It reacts to any heal prediction on you, including from players outside your group; a self-heal alone leaves it empty and invisible.
 
 The bar deliberately follows the default cast bar: one row, dark background, thin border, and text inside the bar.
 
-Your own heals on yourself appear on the outgoing **You** card; the incoming card shows heals from other players.
+Your own heals on yourself appear on the outgoing **You** card; the incoming bar shows heals from other players, even outside your group.
 
 ## Features
 
-- Compact one-bar cards, one for the current healing target (plus group members during your heal casts) and one for incoming heals on you.
+- Compact one-bar cards, one for the current healing target (plus group members during your heal casts) and a minimal incoming bar for heals on you.
 - Thin 220 × 16 default with a 1px black border, small text, and cast-bar sparks at the health and heal edges.
 - Native Forever heal prediction (`UnitGetDetailedHealPrediction` / `UnitHealPredictionCalculator`). No LibHealComm, no combat log, no external libraries.
 - Secret-value safe: health/heal values are handed to StatusBars; amounts are hidden, and overheal is indicated by an orange extension/cap.
