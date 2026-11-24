@@ -2,26 +2,26 @@
 
 **A compact heal prediction HUD for World of Warcraft: Forever - one thin bar per card.**
 
-HealTide shows who is being healed, by how much, and how much would be wasted, in a compact cast-style bar per card.
+HealTide shows the heals you give and receive as compact bars, even when the client hides the numbers.
 
 Each card is a single bar:
 
 - **Health** fills the bar from left to right, colored green → yellow → red.
 - **Heals** extend the bar from the current health position to the predicted total. Your own heal is a brighter shade; other players' heals are slightly darker.
-- **Overheal** colors the heal extension: green (fully effective), yellow (a little wasted), orange (a lot), red (mostly or fully wasted). The heal extension, bar border, and a small end cap use the same color. When the heal exceeds max health, the extension continues past the bar; its length beyond the bar is the wasted amount.
+- **Overheal** turns the heal extension orange when the client signals overheal. The extension continues past the bar; its length beyond the bar is the wasted amount. Amounts are hidden and the exact severity gradient is unavailable when the client marks values secret.
 
-The outgoing target cards and the incoming card are independent, so both can be visible at the same time.
+The outgoing target cards and the incoming card are independent; in a group both can be visible, while the incoming card stays hidden in solo.
 
 The bar deliberately follows the default cast bar: one row, dark background, thin border, and text inside the bar.
 
-Your own heals on yourself appear on the outgoing **You** card; the incoming card independently shows heals from other players, so both can be visible at the same time.
+Your own heals on yourself appear on the outgoing **You** card; the incoming card shows heals from other players.
 
 ## Features
 
-- Compact one-bar cards for the current healing target (plus group members when the player's contribution is readable) and for incoming heals on you.
+- Compact one-bar cards, one for the current healing target (plus group members during your heal casts) and one for incoming heals on you.
 - Thin 220 × 16 default with a 1px black border, small text, and cast-bar sparks at the health and heal edges.
 - Native Forever heal prediction (`UnitGetDetailedHealPrediction` / `UnitHealPredictionCalculator`). No LibHealComm, no combat log, no external libraries.
-- Secret-value safe: health/heal values are handed to StatusBars; amounts and severity colors use the client's secret-safe formatter when available.
+- Secret-value safe: health/heal values are handed to StatusBars; amounts are hidden, and overheal is indicated by an orange extension/cap.
 - Movable cards and a lock mode.
 - Built-in demo mode (`/ht test`) for layout checks without a group.
 - Full `/ht` command set; `/ht status` diagnostics.
@@ -56,8 +56,8 @@ Your own heals on yourself appear on the outgoing **You** card; the incoming car
 ## Known limitations
 
 - **Direct heals only.** Forever's native prediction does not include HoTs; HealTide does not guess them. Other players' HoTs are not exposed in combat.
-- The client marks health and prediction values as secret, even outside combat. The cards still render; amounts and severity colors use the client's formatter when available, otherwise numeric text stays hidden.
-- AoE heals show extra cards when the player's contribution is readable; otherwise the current cast target is shown.
+- The client marks health and prediction values as secret, even outside combat. The bars still render; amounts are hidden and overheal is shown by the orange extension/cap.
+- AoE heals show extra group cards during your heal casts; otherwise the current cast target is shown.
 - This is a floating HUD, not a full raid-frame replacement.
 
 ## License

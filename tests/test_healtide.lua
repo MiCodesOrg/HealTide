@@ -110,6 +110,7 @@ local function NewFrame(frameType, name, parent, template)
     function f:GetValue() return self.__value or 0 end
     function f:SetAllPoints() end
     function f:SetAlpha(a) self.__alpha = a end
+    function f:GetAlpha() return self.__alpha or 1 end
     function f:SetAlphaFromBoolean(v, a, b) self.__alpha = v and a or b end
     function f:SetColorTexture() end
     function f:SetTexture() end
@@ -157,9 +158,7 @@ local secretMode = false
 function issecretvalue(v)
     if not secretMode then return false end
     local t = type(v)
-    if t == "number" then return true end
-    if t == "string" then return v:match("^%d+$") == nil end
-    return false
+    return t == "number" or t == "string"
 end
 
 local units = {
@@ -428,6 +427,16 @@ units.target.prediction = { total = 0, mine = 0, others = 0, max = 1000 }
 Fire("UNIT_SPELLCAST_SENT", "player", "Cible", "castH7b", 2060)
 check(h7Card and h7Card.expires and h7Card.expires > mockTime + 2.5, "new cast clears stale hadHeal")
 Fire("PLAYER_ENTERING_WORLD")
+
+-- AoE: a group prediction during the heal cast window creates a card even
+-- when the player's contribution is secret.
+units.target.prediction = { total = 250, mine = 200, others = 50, max = 1000 }
+Fire("UNIT_SPELLCAST_SENT", "player", "Cible", "castAoe", 2060)
+units.party1.prediction = { total = 100, mine = 0, others = 100, max = 1000 }
+Fire("UNIT_HEAL_PREDICTION", "party1")
+check(CardFor("party1") ~= nil, "AoE prediction creates group card")
+Fire("PLAYER_ENTERING_WORLD")
+
 units.player.prediction = { total = 300, mine = 0, others = 300, max = 1000 }
 Fire("UNIT_HEAL_PREDICTION", "player")
 local incoming = HealTideDebug.incoming()
@@ -461,15 +470,22 @@ check(clampedIncoming and clampedIncoming:IsShown(), "incoming shown when mine c
 check(clampedIncoming and clampedIncoming.otherRibbon:GetValue() == 300, "incoming raw others = 300")
 check(clampedIncoming and clampedIncoming.amount:GetText() == "+300", "incoming raw amount = +300")
 
--- A long incoming prediction must stay alive past the initial 3 s.
+-- A new prediction refreshes the incoming card; a health update gives it a
+-- short tail so it does not linger after the heal lands.
 mockTime = mockTime + 4
+units.player.prediction = { total = 1500, mine = 1200, others = 300, max = 1000 }
+Fire("UNIT_HEAL_PREDICTION", "player")
+check(clampedIncoming and clampedIncoming:IsShown(), "long incoming refresh shown")
+check(clampedIncoming and clampedIncoming.expires and clampedIncoming.expires >= mockTime + 4.9, "incoming refreshed to 5s")
 Fire("UNIT_HEALTH", "player")
-check(clampedIncoming and clampedIncoming:IsShown(), "long incoming stays visible")
-check(clampedIncoming and clampedIncoming.expires and clampedIncoming.expires >= mockTime + 1.9, "incoming expiry extended")
+check(clampedIncoming and clampedIncoming.expires and clampedIncoming.expires <= mockTime + 0.55, "incoming shortens after health update")
 
--- A self-heal is "mine", so the incoming card hides it; it must appear on
--- the outgoing card for the player instead.
+-- A self-heal is "mine", so the incoming card hides it when solo; it must
+-- appear on the outgoing card for the player instead.
 Fire("PLAYER_ENTERING_WORLD")
+local savedParty1, savedMouseover = units.party1, units.mouseover
+units.party1 = nil
+units.mouseover = nil
 units.player.prediction = { total = 0, mine = 0, others = 0, max = 1000 }
 Fire("UNIT_SPELLCAST_SENT", "player", "Moi", "castSelf", 2060)
 local selfCard = CardFor("player")
@@ -479,10 +495,12 @@ Fire("UNIT_HEAL_PREDICTION", "player")
 check(selfCard and selfCard.mineRibbon:GetValue() == 400, "self-heal prediction updates outgoing card")
 check(selfCard and selfCard.amount:GetText() == "+400", "self-heal amount = +400")
 check(selfCard and selfCard.title:GetText() == "You", "self-heal title = You")
-check(not HealTideDebug.incoming():IsShown(), "incoming hidden during self-heal")
+check(not HealTideDebug.incoming():IsShown(), "incoming hidden during solo self-heal")
 
 -- Even with other healers mixed in, the incoming card is independent and
 -- shows their heals while the outgoing You card shows the self-heal.
+units.party1 = savedParty1
+units.mouseover = savedMouseover
 units.player.prediction = { total = 400, mine = 300, others = 100, max = 1000 }
 Fire("UNIT_HEAL_PREDICTION", "player")
 check(HealTideDebug.incoming() and HealTideDebug.incoming():IsShown(), "incoming shows others during self-heal")
@@ -616,22 +634,30 @@ check(secretCard and secretCard.otherRibbon:IsShown(), "secret others bar shown"
 check(secretCard and secretCard.mineRibbon:IsShown(), "secret mine bar shown")
 check(secretCard and secretCard.otherRibbon:GetValue() == 50, "secret others accepted")
 check(secretCard and secretCard.mineRibbon:GetValue() == 200, "secret mine accepted")
-check(secretCard and secretCard.amount:GetText() == "+250", "secret amount via formatter = +250")
+check(secretCard and secretCard.amount:GetText() == "", "secret amount hidden")
+check(secretCard and secretCard.otherOver:GetAlpha() == 0, "secret normal overlay alpha 0")
+check(secretCard and secretCard.mineOver:GetAlpha() == 0, "secret mine overlay alpha 0")
 check(secretCard and secretCard.title:GetText() == "Target", "secret title fallback")
 units.target.prediction = { total = 700, mine = 700, others = 0, max = 1000 }
 Fire("UNIT_HEAL_PREDICTION", "target")
 check(secretCard and secretCard.mineRibbon:GetValue() == 700, "secret raw heal accepted = 700")
 check(secretCard and secretCard.overCap:IsShown(), "secret overheal cap shown")
+check(secretCard and secretCard.otherOver:GetAlpha() == 1, "secret overheal overlay alpha 1")
+check(secretCard and secretCard.mineOver:GetAlpha() == 1, "secret mine overheal overlay alpha 1")
 
--- Secret values: the incoming card still distinguishes self-heals from others.
+-- Secret values: incoming is hidden in solo, shown in a group.
 Fire("PLAYER_ENTERING_WORLD")
 units.player.health = 500
+local savedSecretParty = units.party1
+units.party1 = nil
+units.mouseover = nil
 units.player.prediction = { total = 400, mine = 400, others = 0, max = 1000 }
 Fire("UNIT_HEAL_PREDICTION", "player")
-check(not HealTideDebug.incoming():IsShown(), "secret self-only incoming hidden")
+check(not HealTideDebug.incoming():IsShown(), "secret solo self-only incoming hidden")
+units.party1 = savedSecretParty
 units.player.prediction = { total = 450, mine = 350, others = 100, max = 1000 }
 Fire("UNIT_HEAL_PREDICTION", "player")
-check(HealTideDebug.incoming() and HealTideDebug.incoming():IsShown(), "secret others incoming shown")
+check(HealTideDebug.incoming() and HealTideDebug.incoming():IsShown(), "secret group incoming shown")
 check(HealTideDebug.incoming() and HealTideDebug.incoming().otherRibbon:GetValue() == 100, "secret incoming others = 100")
 secretMode = false
 

@@ -2,26 +2,26 @@
 
 **Un HUD de prédiction de soins compact pour World of Warcraft: Forever - une barre fine par carte.**
 
-HealTide affiche qui est soigné, de combien, et combien serait gaspillé, dans une barre compacte façon barre de cast par carte.
+HealTide affiche les soins que tu donnes et reçois sous forme de barres compactes, même quand le client cache les chiffres.
 
 Chaque carte est une seule barre :
 
 - **Vie** — remplit la barre de gauche à droite, colorée vert → jaune → rouge.
 - **Soins** — prolongent la barre depuis la position actuelle de la vie jusqu'au total prévu. Ton soin est plus lumineux, ceux des autres légèrement plus sombres.
-- **Overheal** — colore la prolongation : vert (tout efficace), jaune (un peu gaspillé), orange (beaucoup), rouge (majoritairement ou totalement gaspillé). La prolongation, la bordure de la barre et un petit repère d'extrémité reprennent la même couleur. Quand le soin dépasse la vie maximale, la prolongation continue au-delà de la barre ; sa longueur au-delà représente la quantité gaspillée.
+- **Overheal** — la prolongation passe en orange quand le client signale de l'overheal. Elle continue au-delà de la barre ; sa longueur au-delà représente la quantité gaspillée. Les montants sont masqués et le dégradé de sévérité n'est pas disponible quand les valeurs sont secrètes.
 
-La carte sortante et la carte incoming sont indépendantes, donc les deux peuvent être visibles en même temps.
+La carte sortante et la carte incoming sont indépendantes ; en groupe les deux peuvent être visibles, tandis que la carte incoming reste masquée en solo.
 
 La barre reprend volontairement l'allure de la barre de cast : une seule ligne, fond sombre, bordure fine, texte à l'intérieur.
 
-Tes propres soins sur toi apparaissent sur la carte sortante **You** ; la carte incoming montre indépendamment les soins des autres joueurs, donc les deux peuvent être visibles en même temps.
+Tes propres soins sur toi apparaissent sur la carte sortante **You** ; la carte incoming montre les soins des autres joueurs.
 
 ## Fonctionnalités
 
-- Cartes compactes à une barre : une pour la cible soignée (et les membres du groupe quand ta contribution est lisible), une pour les soins que tu reçois.
+- Cartes compactes à une barre : une pour la cible soignée (et les membres du groupe pendant tes casts de soin), une pour les soins que tu reçois.
 - Barre fine 220 × 16 par défaut, bordure noire de 1 px, petits textes et étincelles de barre de cast aux bords de la vie et des soins.
 - Prédiction native de Forever via `UnitGetDetailedHealPrediction` / `UnitHealPredictionCalculator` ; pas de LibHealComm, pas de journal de combat.
-- Compatible avec les valeurs secrètes : les montants vont directement dans les StatusBars ; les montants et les couleurs de sévérité utilisent le formateur secret-safe du client quand il est disponible.
+- Compatible avec les valeurs secrètes : les valeurs de vie/soin vont directement dans les StatusBars ; les montants sont masqués et l'overheal est indiqué par une extension/cap orange.
 - Cartes déplaçables, mode verrouillage.
 - Mode démo pour tester l'affichage sans groupe.
 - Aucune bibliothèque externe.
@@ -61,8 +61,8 @@ Tes propres soins sur toi apparaissent sur la carte sortante **You** ; la carte 
 ## Limites connues
 
 - **Soins directs uniquement.** La prédiction native de Forever n'inclut pas les HoTs. HealTide ne les devine pas ; les HoTs des autres joueurs ne sont pas exposés en combat.
-- Le client marque les valeurs de vie et de prédiction comme secrètes, même hors combat. Les cartes s'affichent nativement ; les montants et les couleurs de sévérité utilisent le formateur du client quand il est disponible, sinon les textes chiffrés restent masqués.
-- Soins de zone : des cartes supplémentaires apparaissent quand la contribution du joueur est lisible ; sinon la cible du cast est affichée.
+- Le client marque les valeurs de vie et de prédiction comme secrètes, même hors combat. Les barres s'affichent nativement ; les montants sont masqués et l'overheal est indiqué par l'extension/cap orange.
+- Soins de zone : des cartes de groupe supplémentaires apparaissent pendant tes casts de soin ; sinon la cible du cast est affichée.
 - C'est un HUD flottant, pas un remplacement de VuhDo, HealBot, Grid2 ou HealForever.
 
 ## Développement
