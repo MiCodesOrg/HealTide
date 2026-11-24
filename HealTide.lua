@@ -88,6 +88,8 @@ HT.castSpellID = nil
 HT.castIsHeal = nil
 HT.healCastUntil = 0
 HT.selfHealUntil = 0
+HT.incomingPending = false
+HT.wasSelfHealing = false
 HT.lastCastRefresh = 0
 HT.lastErrorAt = 0
 HT.curve = nil
@@ -251,6 +253,19 @@ function HT:Ready()
     return self.db
 end
 
+function HT:SelfHealing()
+    return (self.selfHealUntil or 0) > 0 and GetTime() <= self.selfHealUntil
+end
+
+function HT:BeginSelfHeal()
+    if self.db and self.db.showIncoming then self.incomingPending = true end
+    if self.incomingCard then
+        self.incomingCard:Hide()
+        self.incomingCard.expires = nil
+        self.incomingCard.sim = nil
+    end
+end
+
 function HT:BarWidth()
     return math.max(40, (self.db and self.db.width or DEFAULTS.width) - 2)
 end
@@ -410,13 +425,8 @@ function HT:SizeCard(card)
     card.healthStrip:SetPoint("BOTTOMRIGHT", card, "BOTTOMRIGHT", -CARD_INSET, CARD_INSET)
 
     card.otherRibbon:ClearAllPoints()
-    if card.kind == "in" then
-        card.otherRibbon:SetPoint("TOPLEFT", card, "TOPLEFT", CARD_INSET, -CARD_INSET)
-        card.otherRibbon:SetPoint("BOTTOMLEFT", card, "BOTTOMLEFT", CARD_INSET, CARD_INSET)
-    else
-        card.otherRibbon:SetPoint("TOPLEFT", card.healthStrip:GetStatusBarTexture(), "TOPRIGHT", 0, 0)
-        card.otherRibbon:SetPoint("BOTTOMLEFT", card.healthStrip:GetStatusBarTexture(), "BOTTOMRIGHT", 0, 0)
-    end
+    card.otherRibbon:SetPoint("TOPLEFT", card.healthStrip:GetStatusBarTexture(), "TOPRIGHT", 0, 0)
+    card.otherRibbon:SetPoint("BOTTOMLEFT", card.healthStrip:GetStatusBarTexture(), "BOTTOMRIGHT", 0, 0)
     card.otherRibbon:SetWidth(self:BarWidth())
 
     card.mineRibbon:ClearAllPoints()
@@ -425,19 +435,24 @@ function HT:SizeCard(card)
     card.mineRibbon:SetWidth(self:BarWidth())
 
     card.otherOver:ClearAllPoints()
-    if card.kind == "in" then
-        card.otherOver:SetPoint("TOPLEFT", card, "TOPLEFT", CARD_INSET, -CARD_INSET)
-        card.otherOver:SetPoint("BOTTOMLEFT", card, "BOTTOMLEFT", CARD_INSET, CARD_INSET)
-    else
-        card.otherOver:SetPoint("TOPLEFT", card.healthStrip:GetStatusBarTexture(), "TOPRIGHT", 0, 0)
-        card.otherOver:SetPoint("BOTTOMLEFT", card.healthStrip:GetStatusBarTexture(), "BOTTOMRIGHT", 0, 0)
-    end
+    card.otherOver:SetPoint("TOPLEFT", card.healthStrip:GetStatusBarTexture(), "TOPRIGHT", 0, 0)
+    card.otherOver:SetPoint("BOTTOMLEFT", card.healthStrip:GetStatusBarTexture(), "BOTTOMRIGHT", 0, 0)
     card.otherOver:SetWidth(self:BarWidth())
 
     card.mineOver:ClearAllPoints()
     card.mineOver:SetPoint("TOPLEFT", card.otherRibbon:GetStatusBarTexture(), "TOPRIGHT", 0, 0)
     card.mineOver:SetPoint("BOTTOMLEFT", card.otherRibbon:GetStatusBarTexture(), "BOTTOMRIGHT", 0, 0)
     card.mineOver:SetWidth(self:BarWidth())
+
+    local innerH = math.max(1, h - CARD_INSET * 2)
+    local stripH = math.max(3, math.floor(innerH * 0.4))
+    local stripY = -math.floor((innerH - stripH) / 2)
+    card.otherStrip:ClearAllPoints()
+    card.otherStrip:SetPoint("TOPLEFT", card.healthStrip:GetStatusBarTexture(), "TOPRIGHT", 0, stripY)
+    card.otherStrip:SetSize(self:BarWidth(), stripH)
+    card.otherStripOver:ClearAllPoints()
+    card.otherStripOver:SetPoint("TOPLEFT", card.healthStrip:GetStatusBarTexture(), "TOPRIGHT", 0, stripY)
+    card.otherStripOver:SetSize(self:BarWidth(), stripH)
 
     card.healEdge:ClearAllPoints()
     card.healEdge:SetPoint("TOPLEFT", card.healthStrip:GetStatusBarTexture(), "TOPRIGHT", 0, 0)
@@ -539,6 +554,20 @@ function HT:CreateCard(kind)
     card.mineOver:SetValue(1)
     card.mineOver:Hide()
 
+    card.otherStrip = CreateFrame("StatusBar", nil, card)
+    card.otherStrip:SetStatusBarTexture("Interface\\TargetingFrame\\UI-StatusBar")
+    card.otherStrip:SetStatusBarColor(0.55, 0.85, 1.0, 0.90)
+    card.otherStrip:SetMinMaxValues(0, 1)
+    card.otherStrip:SetValue(1)
+    card.otherStrip:Hide()
+
+    card.otherStripOver = CreateFrame("StatusBar", nil, card)
+    card.otherStripOver:SetStatusBarTexture("Interface\\TargetingFrame\\UI-StatusBar")
+    card.otherStripOver:SetStatusBarColor(1.0, 0.55, 0.12, 0.95)
+    card.otherStripOver:SetMinMaxValues(0, 1)
+    card.otherStripOver:SetValue(1)
+    card.otherStripOver:Hide()
+
     card.healEdge = card.overlay:CreateTexture(nil, "OVERLAY")
     card.healEdge:SetWidth(1)
     card.healEdge:SetColorTexture(1, 1, 1, 0.55)
@@ -568,6 +597,8 @@ function HT:CreateCard(kind)
     card.mineRibbon:SetFrameLevel(card:GetFrameLevel() + 3)
     card.otherOver:SetFrameLevel(card:GetFrameLevel() + 4)
     card.mineOver:SetFrameLevel(card:GetFrameLevel() + 5)
+    card.otherStrip:SetFrameLevel(card:GetFrameLevel() + 6)
+    card.otherStripOver:SetFrameLevel(card:GetFrameLevel() + 7)
     card.overlay:SetFrameLevel(card:GetFrameLevel() + 20)
 
     card:SetScript("OnDragStart", function(self)
@@ -617,17 +648,6 @@ function HT:CreateCard(kind)
         if GameTooltip then GameTooltip:Hide() end
     end)
     card:EnableMouse(false)
-    if kind == "in" then
-        card:SetBackdropColor(0, 0, 0, 0)
-        card:SetBackdropBorderColor(0, 0, 0, 0)
-        card.healthStrip:Hide()
-        card.title:Hide()
-        card.amount:Hide()
-        card.overCap:Hide()
-        card.healEdge:Hide()
-        card.sparkHealth:Hide()
-        card.sparkHeal:Hide()
-    end
     card:Hide()
     self:SizeCard(card)
     return card
@@ -703,6 +723,15 @@ end
 function HT:ShowIncoming(duration)
     self:Ready()
     if not self.db.showIncoming then return end
+    if self:SelfHealing() then
+        self.incomingPending = true
+        if self.incomingCard then
+            self.incomingCard:Hide()
+            self.incomingCard.expires = nil
+            self.incomingCard.sim = nil
+        end
+        return
+    end
     if not self.incomingCard then
         self.incomingCard = self:CreateCard("in")
         self.incomingCard.kind = "in"
@@ -868,16 +897,26 @@ function HT:UpdateCard(card, unit)
         end
     end
 
-    -- Feed the heal values straight into the StatusBars. In this client the
-    -- values are secret: only the native renderer can draw the lengths.
+    local selfStrip = card.kind == "out" and card.unit == "player" and self:SelfHealing()
+
+    -- Normal other-heal segment. On the self-heal You card it becomes a thin
+    -- light strip at the start of the heal extension, followed by the full
+    -- self-heal segment.
     card.otherRibbon:SetMinMaxValues(0, healthMax)
-    if secretValues then
-        card.otherRibbon:SetStatusBarColor(0.22, 0.62, 0.38, 0.95)
-    else
-        card.otherRibbon:SetStatusBarColor(cr * otherScale, cg * otherScale, cb * otherScale, 0.95)
-    end
     card.otherRibbon:SetValue(otherValue)
     card.otherRibbon:Show()
+    if selfStrip then
+        -- The full-height green segment is replaced by the thin light strip,
+        -- but its length still anchors the self-heal segment that follows.
+        card.otherRibbon:SetAlpha(0)
+    else
+        card.otherRibbon:SetAlpha(1)
+        if secretValues then
+            card.otherRibbon:SetStatusBarColor(0.22, 0.62, 0.38, 0.95)
+        else
+            card.otherRibbon:SetStatusBarColor(cr * otherScale, cg * otherScale, cb * otherScale, 0.95)
+        end
+    end
 
     card.mineRibbon:SetMinMaxValues(0, healthMax)
     if card.kind == "out" then
@@ -893,43 +932,49 @@ function HT:UpdateCard(card, unit)
         card.mineRibbon:Hide()
     end
 
-    -- Secret-safe binary overheal: an orange copy of each segment is shown via
-    -- the secret `clamped` boolean. With readable values we keep the detailed
-    -- severity colors instead.
+    -- Secret-safe binary overheal: orange overlays follow the secret
+    -- `clamped` boolean. With readable values we keep severity colors.
     card.otherOver:SetMinMaxValues(0, healthMax)
     card.otherOver:SetValue(otherValue)
     card.mineOver:SetMinMaxValues(0, healthMax)
     card.mineOver:SetValue(card.kind == "out" and mineValue or 0)
-    if secretValues then
-        card.otherOver:Show()
-        local okOther = pcall(card.otherOver.SetAlphaFromBoolean, card.otherOver, missClamped, 1, 0)
-        if not okOther then card.otherOver:Hide() end
-        if card.kind == "out" then
-            card.mineOver:Show()
-            local okMine = pcall(card.mineOver.SetAlphaFromBoolean, card.mineOver, missClamped, 1, 0)
-            if not okMine then card.mineOver:Hide() end
-        else
-            card.mineOver:Hide()
-        end
-    else
+
+    if selfStrip then
         card.otherOver:Hide()
+        card.otherStrip:SetMinMaxValues(0, healthMax)
+        card.otherStrip:SetValue(otherValue)
+        card.otherStrip:SetStatusBarColor(0.55, 0.85, 1.0, 0.90)
+        card.otherStrip:Show()
+        card.otherStripOver:SetMinMaxValues(0, healthMax)
+        card.otherStripOver:SetValue(otherValue)
+        card.otherStripOver:Show()
+        local okStrip = pcall(card.otherStripOver.SetAlphaFromBoolean, card.otherStripOver, missClamped, 1, 0)
+        if not okStrip then card.otherStripOver:Hide() end
+    else
+        card.otherStrip:Hide()
+        card.otherStripOver:Hide()
+        if secretValues then
+            card.otherOver:Show()
+            local okOther = pcall(card.otherOver.SetAlphaFromBoolean, card.otherOver, missClamped, 1, 0)
+            if not okOther then card.otherOver:Hide() end
+        else
+            card.otherOver:Hide()
+        end
+    end
+
+    if secretValues and card.kind == "out" then
+        card.mineOver:Show()
+        local okMine = pcall(card.mineOver.SetAlphaFromBoolean, card.mineOver, missClamped, 1, 0)
+        if not okMine then card.mineOver:Hide() end
+    else
         card.mineOver:Hide()
     end
 
-    if card.kind == "in" then
-        card.healEdge:Hide()
-        card.sparkHealth:Hide()
-        card.sparkHeal:Hide()
-    else
-        card.healEdge:Show()
-        card.sparkHealth:Show()
-        card.sparkHeal:Show()
-    end
+    card.healEdge:Show()
+    card.sparkHealth:Show()
+    card.sparkHeal:Show()
 
-    if card.kind == "in" then
-        card.overCap:Hide()
-        card:SetBackdropBorderColor(0, 0, 0, 0)
-    elseif secretValues then
+    if secretValues then
         card.overCap:SetColorTexture(1, 0.55, 0.12, 0.95)
         card.overCap:SetAlpha(0)
         card.overCap:Show()
@@ -1081,6 +1126,7 @@ function HT:OnCastSent(targetName, castGUID, spellID)
         self.healCastUntil = math.max(self.healCastUntil or 0, GetTime() + 2)
         if unit == "player" then
             self.selfHealUntil = math.max(self.selfHealUntil or 0, GetTime() + 2)
+            self:BeginSelfHeal()
         end
         return
     end
@@ -1092,6 +1138,7 @@ function HT:OnCastSent(targetName, castGUID, spellID)
     self.healCastUntil = GetTime() + 3
     if unit == "player" then
         self.selfHealUntil = GetTime() + 3
+        self:BeginSelfHeal()
     else
         self.selfHealUntil = 0
     end
@@ -1124,6 +1171,7 @@ function HT:ShowCurrentCast(extra)
     self.healCastUntil = math.max(self.healCastUntil or 0, (endSec and endSec + 2) or (GetTime() + 3))
     if unit == "player" then
         self.selfHealUntil = (endSec and endSec + 2.5) or (GetTime() + 3)
+        self:BeginSelfHeal()
     end
     local existing = self:Find(unit)
     if existing then
@@ -1153,6 +1201,7 @@ function HT:OnCastDelayed(castGUID)
     self.healCastUntil = math.max(self.healCastUntil or 0, (endSec and endSec + 2) or (GetTime() + 3))
     if self.castUnit == "player" then
         self.selfHealUntil = (endSec and endSec + 2.5) or (GetTime() + 3)
+        self:BeginSelfHeal()
     end
 
     local card = self:Find(self.castUnit)
@@ -1172,6 +1221,7 @@ function HT:OnCastDone(castGUID)
     if not self.castUnit then return end
     if self.castUnit == "player" then
         self.selfHealUntil = math.max(self.selfHealUntil or 0, GetTime() + 2.5)
+        self:BeginSelfHeal()
     end
     if self:CastEnd() then
         self:OnCastDelayed(castGUID)
@@ -1301,6 +1351,8 @@ function HT:Handle(event, ...)
     if event == "PLAYER_ENTERING_WORLD" then
         self:EnsureCalculators()
         self.selfHealUntil = 0
+        self.incomingPending = false
+        self.wasSelfHealing = false
         self.healCastUntil = 0
         self.castUnit = nil
         self.castGUID = nil
@@ -1662,6 +1714,20 @@ end
 
 function HT:Refresh(now)
     if not self.db then return end
+
+    local selfHealing = self:SelfHealing()
+    if not selfHealing and (self.wasSelfHealing or self.incomingPending) then
+        -- The self-heal window is over: restore the normal full segments on
+        -- the You card and, if an incoming heal was seen meanwhile, bring the
+        -- incoming card back with its health bar.
+        local playerCard = self:Find("player")
+        if playerCard then self:UpdateCard(playerCard, "player") end
+        if self.incomingPending then
+            self.incomingPending = false
+            if self.db.showIncoming then self:ShowIncoming(3) end
+        end
+    end
+    self.wasSelfHealing = selfHealing
 
     -- Keep the target card alive and refresh it while the heal is being cast
     -- or channelled. Once the cast is resolved, prediction events use a short

@@ -480,12 +480,14 @@ check(clampedIncoming and clampedIncoming.expires and clampedIncoming.expires >=
 Fire("UNIT_HEALTH", "player")
 check(clampedIncoming and clampedIncoming.expires and clampedIncoming.expires <= mockTime + 0.55, "incoming shortens after health update")
 
--- A self-heal is "mine", so the incoming card hides it when solo; it must
--- appear on the outgoing card for the player instead.
+-- A self-heal uses the outgoing You card. The incoming card is hidden while
+-- the self-heal window is active, and other players' heals are drawn as a
+-- thinner, lighter strip inside the You card.
 Fire("PLAYER_ENTERING_WORLD")
 local savedParty1, savedMouseover = units.party1, units.mouseover
 units.party1 = nil
 units.mouseover = nil
+units.player.health = 500
 units.player.prediction = { total = 0, mine = 0, others = 0, max = 1000 }
 Fire("UNIT_SPELLCAST_SENT", "player", "Moi", "castSelf", 2060)
 local selfCard = CardFor("player")
@@ -495,16 +497,19 @@ Fire("UNIT_HEAL_PREDICTION", "player")
 check(selfCard and selfCard.mineRibbon:GetValue() == 400, "self-heal prediction updates outgoing card")
 check(selfCard and selfCard.amount:GetText() == "+400", "self-heal amount = +400")
 check(selfCard and selfCard.title:GetText() == "You", "self-heal title = You")
-check(HealTideDebug.incoming() and HealTideDebug.incoming().otherRibbon:GetValue() == 0, "self-heal has no incoming ribbon")
-check(HealTideDebug.incoming() and not HealTideDebug.incoming().healthStrip:IsShown(), "incoming chrome hidden")
+check(HealTideDebug.incoming() == nil or not HealTideDebug.incoming():IsShown(), "incoming hidden during self-heal")
 
--- Even with other healers mixed in, the incoming bar is independent and
--- shows their heals while the outgoing You card shows the self-heal.
+-- Other healers mixed in: their heals become a 40%-height light strip on the
+-- You card while your own heal keeps the full-height green segment.
 units.player.prediction = { total = 400, mine = 300, others = 100, max = 1000 }
 Fire("UNIT_HEAL_PREDICTION", "player")
-check(HealTideDebug.incoming() and HealTideDebug.incoming().otherRibbon:GetValue() == 100, "incoming others = 100 during self-heal")
 check(selfCard and selfCard.otherRibbon:GetValue() == 100, "self-heal outgoing others = 100")
+check(selfCard and selfCard.otherRibbon:GetAlpha() == 0, "self-heal full others segment hidden")
+check(selfCard and selfCard.otherStrip:GetValue() == 100, "self-heal others strip = 100")
+check(selfCard and selfCard.otherStrip:IsShown(), "self-heal others strip shown")
+check(selfCard and selfCard.otherStrip:GetHeight() == 5, "self-heal others strip = 40% height")
 check(selfCard and selfCard.mineRibbon:GetValue() == 300, "self-heal outgoing mine = 300")
+check(HealTideDebug.incoming() == nil or not HealTideDebug.incoming():IsShown(), "incoming still hidden during self-heal")
 units.party1 = savedParty1
 units.mouseover = savedMouseover
 
@@ -512,6 +517,16 @@ units.mouseover = savedMouseover
 Fire("UNIT_SPELLCAST_SUCCEEDED", "player", "castSelf", 2060)
 Fire("UNIT_HEAL_PREDICTION", "player")
 check(selfCard and selfCard.expires <= mockTime + 0.65, "self-heal card does not linger after cast")
+
+-- Once the self-heal window ends, the incoming card comes back with its
+-- health bar instead of staying hidden.
+mockTime = mockTime + 4
+driver.__scripts.OnUpdate(driver, 0.1)
+local returnedIncoming = HealTideDebug.incoming()
+check(returnedIncoming and returnedIncoming:IsShown(), "incoming returns after self-heal")
+check(returnedIncoming and returnedIncoming.healthStrip:GetValue() == 500, "incoming returned health = 500")
+check(returnedIncoming and returnedIncoming.otherRibbon:GetValue() == 100, "incoming returned others = 100")
+check(returnedIncoming and not returnedIncoming.otherStrip:IsShown(), "incoming has no others strip")
 
 -- Non-heal cast is filtered.
 Fire("PLAYER_ENTERING_WORLD")
@@ -645,7 +660,9 @@ check(secretCard and secretCard.overCap:IsShown(), "secret overheal cap shown")
 check(secretCard and secretCard.otherOver:GetAlpha() == 1, "secret overheal overlay alpha 1")
 check(secretCard and secretCard.mineOver:GetAlpha() == 1, "secret mine overheal overlay alpha 1")
 
--- Secret values: incoming is a minimal ribbon; a self-heal has no fill.
+-- Secret values: the incoming card is a normal health + received-heal card,
+-- including when the player is solo. A self-heal prediction alone leaves its
+-- heal segment empty, but the health bar is available.
 Fire("PLAYER_ENTERING_WORLD")
 units.player.health = 500
 local savedSecretParty = units.party1
@@ -653,11 +670,27 @@ units.party1 = nil
 units.mouseover = nil
 units.player.prediction = { total = 400, mine = 400, others = 0, max = 1000 }
 Fire("UNIT_HEAL_PREDICTION", "player")
+check(HealTideDebug.incoming() and HealTideDebug.incoming():IsShown(), "secret solo incoming shown")
+check(HealTideDebug.incoming() and HealTideDebug.incoming().healthStrip:GetValue() == 500, "secret incoming health bar = 500")
 check(HealTideDebug.incoming() and HealTideDebug.incoming().otherRibbon:GetValue() == 0, "secret self-only incoming ribbon 0")
-check(HealTideDebug.incoming() and not HealTideDebug.incoming().healthStrip:IsShown(), "secret incoming chrome hidden")
 units.player.prediction = { total = 450, mine = 350, others = 100, max = 1000 }
 Fire("UNIT_HEAL_PREDICTION", "player")
 check(HealTideDebug.incoming() and HealTideDebug.incoming().otherRibbon:GetValue() == 100, "secret solo incoming outsiders = 100")
+check(HealTideDebug.incoming() and HealTideDebug.incoming().amount:GetText() == "", "secret incoming amount hidden")
+
+-- Secret self-heal: the thin strip accepts secret values natively and the
+-- incoming card stays out of the way.
+local savedSecretTarget = units.target
+units.target = nil
+Fire("UNIT_SPELLCAST_SENT", "player", "Moi", "castSecretSelf", 2060)
+units.player.prediction = { total = 500, mine = 300, others = 200, max = 1000 }
+Fire("UNIT_HEAL_PREDICTION", "player")
+local secretSelf = CardFor("player")
+check(secretSelf and secretSelf.otherStrip:IsShown(), "secret self strip shown")
+check(secretSelf and secretSelf.otherStrip:GetValue() == 200, "secret self strip = 200")
+check(secretSelf and secretSelf.otherRibbon:GetAlpha() == 0, "secret self full segment hidden")
+check(HealTideDebug.incoming() == nil or not HealTideDebug.incoming():IsShown(), "secret incoming hidden during self-heal")
+units.target = savedSecretTarget
 units.party1 = savedSecretParty
 secretMode = false
 

@@ -8,17 +8,18 @@ Chaque carte est une seule barre :
 
 - **Vie** — remplit la barre de gauche à droite, colorée vert → jaune → rouge.
 - **Soins** — prolongent la barre depuis la position actuelle de la vie jusqu'au total prévu. Ton soin est plus lumineux, ceux des autres légèrement plus sombres.
+- **Bande d'auto-soin** — pendant que tu te soignes, les soins des autres joueurs sont dessinés comme une bande fine (40 % de la hauteur) bleu clair dans ta carte **You**, et la carte incoming s'efface.
 - **Overheal** — la prolongation passe en orange quand le client signale de l'overheal. Elle continue au-delà de la barre ; sa longueur au-delà représente la quantité gaspillée. Les montants sont masqués et le dégradé de sévérité n'est pas disponible quand les valeurs sont secrètes.
 
-La carte incoming est une barre minimale de soins reçus : pas de barre de vie, de nom ni de montant. Elle réagit à toute prédiction de soin sur toi, y compris d'un joueur hors de ton groupe ; un auto-soin seul la laisse vide et invisible.
+La carte incoming est une carte de soins reçus avec ta barre de vie et la prédiction entrante. Pendant ton auto-soin, elle se masque ; ta carte **You** garde la barre complète de ton soin, avec les soins des autres sur la bande fine. Quand la fenêtre d'auto-soin se termine, la carte incoming revient avec sa barre de vie. Cela fonctionne aussi en solo : des joueurs hors de ton groupe peuvent te soigner.
 
 La barre reprend volontairement l'allure de la barre de cast : une seule ligne, fond sombre, bordure fine, texte à l'intérieur.
 
-Tes propres soins sur toi apparaissent sur la carte sortante **You** ; la barre incoming montre les soins des autres joueurs, même hors de ton groupe.
+Tes propres soins sur toi apparaissent sur la carte sortante **You** ; hors auto-soin, la carte incoming montre les soins reçus avec ta barre de vie, même de joueurs hors de ton groupe.
 
 ## Fonctionnalités
 
-- Cartes compactes à une barre : une pour la cible soignée (et les membres du groupe pendant tes casts de soin), une barre incoming minimale pour les soins que tu reçois.
+- Cartes compactes à une barre : une pour la cible soignée (et les membres du groupe pendant tes casts de soin), une carte incoming pour les soins que tu reçois ; pendant un auto-soin, les soins reçus se replient en une bande fine sur la carte **You**.
 - Barre fine 220 × 16 par défaut, bordure noire de 1 px, petits textes et étincelles de barre de cast aux bords de la vie et des soins.
 - Prédiction native de Forever via `UnitGetDetailedHealPrediction` / `UnitHealPredictionCalculator` ; pas de LibHealComm, pas de journal de combat.
 - Compatible avec les valeurs secrètes : les valeurs de vie/soin vont directement dans les StatusBars ; les montants sont masqués et l'overheal est indiqué par une extension/cap orange.
