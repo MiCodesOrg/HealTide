@@ -616,7 +616,7 @@ check(secretCard and secretCard.otherRibbon:IsShown(), "secret others bar shown"
 check(secretCard and secretCard.mineRibbon:IsShown(), "secret mine bar shown")
 check(secretCard and secretCard.otherRibbon:GetValue() == 50, "secret others accepted")
 check(secretCard and secretCard.mineRibbon:GetValue() == 200, "secret mine accepted")
-check(secretCard and secretCard.amount:GetText() == "", "secret amount hidden")
+check(secretCard and secretCard.amount:GetText() == "+250", "secret amount via formatter = +250")
 check(secretCard and secretCard.title:GetText() == "Target", "secret title fallback")
 units.target.prediction = { total = 700, mine = 700, others = 0, max = 1000 }
 Fire("UNIT_HEAL_PREDICTION", "target")

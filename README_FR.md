@@ -21,7 +21,7 @@ Tes propres soins sur toi apparaissent sur la carte sortante **You** ; la carte 
 - Cartes compactes à une barre : une pour la cible soignée (et les membres du groupe quand ta contribution est lisible), une pour les soins que tu reçois.
 - Barre fine 220 × 16 par défaut, bordure noire de 1 px, petits textes et étincelles de barre de cast aux bords de la vie et des soins.
 - Prédiction native de Forever via `UnitGetDetailedHealPrediction` / `UnitHealPredictionCalculator` ; pas de LibHealComm, pas de journal de combat.
-- Compatible avec les valeurs secrètes : les montants vont directement dans les StatusBars ; les textes chiffrés disparaissent quand le client les masque.
+- Compatible avec les valeurs secrètes : les montants vont directement dans les StatusBars ; les montants et les couleurs de sévérité utilisent le formateur secret-safe du client quand il est disponible.
 - Cartes déplaçables, mode verrouillage.
 - Mode démo pour tester l'affichage sans groupe.
 - Aucune bibliothèque externe.
@@ -61,7 +61,7 @@ Tes propres soins sur toi apparaissent sur la carte sortante **You** ; la carte 
 ## Limites connues
 
 - **Soins directs uniquement.** La prédiction native de Forever n'inclut pas les HoTs. HealTide ne les devine pas ; les HoTs des autres joueurs ne sont pas exposés en combat.
-- En combat, certaines valeurs sont secrètes ; les cartes s'affichent quand même, la prolongation reste proportionnelle avec un cap rouge quand l'overheal est détecté, et les textes chiffrés disparaissent.
+- Le client marque les valeurs de vie et de prédiction comme secrètes, même hors combat. Les cartes s'affichent nativement ; les montants et les couleurs de sévérité utilisent le formateur du client quand il est disponible, sinon les textes chiffrés restent masqués.
 - Soins de zone : des cartes supplémentaires apparaissent quand la contribution du joueur est lisible ; sinon la cible du cast est affichée.
 - C'est un HUD flottant, pas un remplacement de VuhDo, HealBot, Grid2 ou HealForever.
 

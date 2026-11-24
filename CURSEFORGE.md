@@ -21,7 +21,7 @@ Your own heals on yourself appear on the outgoing **You** card; the incoming car
 - Compact one-bar cards for the current healing target (plus group members when the player's contribution is readable) and for incoming heals on you.
 - Thin 220 × 16 default with a 1px black border, small text, and cast-bar sparks at the health and heal edges.
 - Native Forever heal prediction (`UnitGetDetailedHealPrediction` / `UnitHealPredictionCalculator`). No LibHealComm, no combat log, no external libraries.
-- Secret-value safe: health/heal values are handed to StatusBars; numeric text is hidden when the client marks values secret.
+- Secret-value safe: health/heal values are handed to StatusBars; amounts and severity colors use the client's secret-safe formatter when available.
 - Movable cards and a lock mode.
 - Built-in demo mode (`/ht test`) for layout checks without a group.
 - Full `/ht` command set; `/ht status` diagnostics.
@@ -56,7 +56,7 @@ Your own heals on yourself appear on the outgoing **You** card; the incoming car
 ## Known limitations
 
 - **Direct heals only.** Forever's native prediction does not include HoTs; HealTide does not guess them. Other players' HoTs are not exposed in combat.
-- Secret values in combat can hide numeric text; the cards still render, and the heal extension stays proportional with a red end cap when overheal is detected.
+- The client marks health and prediction values as secret, even outside combat. The cards still render; amounts and severity colors use the client's formatter when available, otherwise numeric text stays hidden.
 - AoE heals show extra cards when the player's contribution is readable; otherwise the current cast target is shown.
 - This is a floating HUD, not a full raid-frame replacement.
 

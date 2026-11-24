@@ -255,9 +255,11 @@ function HT:BarWidth()
 end
 
 function HT:OverhealColor(raw, effective)
-    if not Num(raw) or raw <= 0 or not Num(effective) then return 0.35, 0.85, 0.55, 0 end
-    local eff = math.max(0, effective)
-    local ratio = math.max(0, raw - eff) / raw
+    local rawNum = CountValue(raw)
+    local effectiveNum = CountValue(effective)
+    if not rawNum or rawNum <= 0 or not effectiveNum then return 0.35, 0.85, 0.55, 0 end
+    local eff = math.max(0, effectiveNum)
+    local ratio = math.max(0, rawNum - eff) / rawNum
     if ratio <= 0.01 then return 0.25, 0.95, 0.45, ratio end
     if ratio <= 0.20 then return 0.95, 0.90, 0.25, ratio end
     if ratio <= 0.50 then return 1.00, 0.62, 0.15, ratio end
@@ -336,18 +338,22 @@ function HT:Read(unit, calc)
 end
 
 function HT:OthersBase(mine, others, totalBase, totalFromHealer)
-    if Num(totalBase) and Num(totalFromHealer) then
-        local value = totalBase - totalFromHealer
+    local totalNum = CountValue(totalBase)
+    local fromHealerNum = CountValue(totalFromHealer)
+    if totalNum and fromHealerNum then
+        local value = totalNum - fromHealerNum
         if value < 0 then value = 0 end
         return value
     end
-    if Num(totalBase) and Num(mine) then
-        local value = totalBase - mine
+    local mineNum = CountValue(mine)
+    if totalNum and mineNum then
+        local value = totalNum - mineNum
         if value < 0 then value = 0 end
         return value
     end
-    if Num(others) then return others end
-    if Num(totalBase) then return totalBase end
+    local othersNum = CountValue(others)
+    if othersNum then return othersNum end
+    if totalNum then return totalNum end
     return others
 end
 
@@ -681,9 +687,9 @@ function HT:HideCard(card)
 end
 
 function HT:Format(value)
-    if not Num(value) then return "" end
-    if value <= 0 then return "" end
-    return "+" .. tostring(math.floor(value + 0.5))
+    local number = CountValue(value)
+    if not number or number <= 0 then return "" end
+    return "+" .. tostring(math.floor(number + 0.5))
 end
 
 function HT:SetTitle(card, unit)
@@ -1137,7 +1143,8 @@ function HT:OnPrediction(unit)
 
     if self.db.showOutgoing and self:GroupUnit(unit) and Friendly(unit) then
         local _, mine = self:Read(unit, self.calcMax)
-        if Num(mine) and mine > 0 then
+        local mineNum = CountValue(mine)
+        if mineNum and mineNum > 0 then
             self:ShowOutgoing(unit, 3)
         end
     end
@@ -1396,6 +1403,16 @@ function HT:SecretCheck()
         if value == nil then return "nil" end
         return tostring(value)
     end
+    local function Fmt(value)
+        if not IsSecret(value) then
+            if value == nil then return "nil" end
+            return tostring(value)
+        end
+        if type(value) ~= "number" then return "secret(non-number)" end
+        local ok, text = pcall(string.format, "%.0f", value)
+        if not ok then return "secret(format-error)" end
+        return "secret(" .. tostring(text) .. ",text-secret=" .. tostring(IsSecret(text)) .. ")"
+    end
 
     Say("B2 health: " .. Flag(Try(UnitHealth, "player"))
         .. " | current-only: " .. Flag(Try(UnitHealth, "player", false)))
@@ -1440,9 +1457,9 @@ function HT:SecretCheck()
     local totalBase = Try(calc.GetTotalIncomingHeals, calc)
     local totalFromHealer = Try(calc.GetTotalIncomingHealsFromHealer, calc)
     Say("B2 calc secret: " .. hasSecret)
-    Say("B2 incoming: total=" .. Flag(total) .. " | mine=" .. Flag(mine)
-        .. " | others=" .. Flag(others) .. " | clamped=" .. Flag(clamped))
-    Say("B2 raw: total=" .. Flag(totalBase) .. " | fromHealer=" .. Flag(totalFromHealer))
+    Say("B2 incoming: total=" .. Fmt(total) .. " | mine=" .. Fmt(mine)
+        .. " | others=" .. Fmt(others) .. " | clamped=" .. Flag(clamped))
+    Say("B2 raw: total=" .. Fmt(totalBase) .. " | fromHealer=" .. Fmt(totalFromHealer))
 end
 
 SLASH_HEALTIDE1 = "/ht"
